@@ -101,11 +101,19 @@
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:9px 16px;border-radius:10px;opacity:0;transition:.25s;pointer-events:none;z-index:90;font-size:13px}
   .toast.show{opacity:1}
 
+  .search{width:190px;background:var(--bg);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:6px 10px;font:inherit;outline:none}
+  .search:focus{border-color:var(--acc)}
+  .search::placeholder{color:var(--mut)}
+  mark{background:rgba(79,140,255,.32);color:inherit;border-radius:3px;padding:0 1px}
+  .upd-info{font-size:12px;color:var(--mut);line-height:1.6;margin:-4px 0 12px;padding:8px 10px;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+  .upd-info a{color:var(--acc)}
+
   @media (max-width:700px){
     .side{width:44px;padding:10px 0}
     .side h2,.cat .name{display:none}
     .cat{justify-content:center;padding:10px 0}
     .cat .cnt{transform:scale(.85)}
+    .search{width:120px}
   }
 </style>
 </head>
@@ -116,6 +124,7 @@
     <button data-g="personal" class="active">个人</button>
     <button data-g="work">工作</button>
   </div>
+  <input id="search" class="search" placeholder="搜索书签 (Ctrl/⌘+K)" />
   <span class="spacer"></span>
   <button class="ghost" id="btnSettings">设置</button>
   <button class="primary" id="btnAddBm">+ 书签</button>
@@ -141,9 +150,11 @@
 <footer class="foot">
   <span id="siteAuthor">gai溜子到处跑</span>
   <span class="dot">·</span>
-  <a id="siteUrl" href="https://example.com" target="_blank" rel="noopener">example.com</a>
+  <a id="siteUrl" href="https://www.090803.xyz" target="_blank" rel="noopener">www.090803.xyz</a>
   <span class="dot">·</span>
-  <span id="siteVer">v20260910j</span>
+  <span id="siteVer">v4.1</span>
+  <span class="dot">·</span>
+  <a id="repoLink" href="https://github.com/jeffak000/webbook-cf" target="_blank" rel="noopener">GitHub 更新</a>
 </footer>
 
 <!-- 设置抽屉 -->
@@ -190,6 +201,11 @@
       <div><label>免密访问密钥</label><small>生成长密钥，用带密钥的链接可直接进站</small></div>
       <button class="small" id="btnAccessKey">管理</button>
     </div>
+    <div class="setting">
+      <div><label>关于 / 更新</label><small>当前版本与 GitHub 更新检查</small></div>
+      <button class="small" id="btnCheckUpdate">检查更新</button>
+    </div>
+    <div id="updateInfo" class="upd-info" style="display:none"></div>
     <div class="setting">
       <div><label>清空全部</label><small>删除所有分类和书签，建议先备份</small></div>
       <button class="danger small" id="btnWipe">清空</button>
@@ -262,7 +278,7 @@
     <h3>站点信息</h3>
     <div class="field"><label>站点名称</label><input id="siteNameIn" placeholder="如 gai溜子导航站" /></div>
     <div class="field"><label>作者</label><input id="siteAuthorIn" placeholder="如 gai溜子到处跑" /></div>
-    <div class="field"><label>网址</label><input id="siteUrlIn" placeholder="如 www.example.com" /></div>
+    <div class="field"><label>网址</label><input id="siteUrlIn" placeholder="如 www.090803.xyz" /></div>
     <div class="row"><button id="siteCancel" class="ghost">取消</button><button id="siteSave" class="primary">保存</button></div>
   </div>
 </div>
@@ -278,6 +294,6 @@
 
 <div class="ctx" id="ctxMenu"></div>
 
-<script src="app.js?v=202609110134"></script>
+<script src="app.js?v=202609110240"></script>
 </body>
 </html>
