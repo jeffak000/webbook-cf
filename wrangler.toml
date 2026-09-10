@@ -1,0 +1,31 @@
+name = "webbook-cf"
+main = "worker/index.js"
+compatibility_date = "2024-11-01"
+workers_dev = true
+
+# 改成你自己的 Cloudflare 账户 ID（控制台右下角 "账户 ID"）
+account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
+
+# 先创建 KV 命名空间，把输出的 id 填到下面：
+#   npx wrangler kv namespace create BOOKMARKS
+kv_namespaces = [
+  { binding = "BOOKMARKS", id = "YOUR_BOOKMARKS_KV_ID" }
+]
+
+# 前端静态资源（public/index.html / public/app.js）由 Workers Assets 托管
+# run_worker_first = true：所有请求先经 Worker（访问锁 + 缓存头才能生效），否则静态文件会被直接返回、绕过锁
+assets = { binding = "ASSETS", directory = "./public", run_worker_first = true }
+
+# 自定义域名（可选）。前提：该域名已在 Cloudflare 添加为站点（NS 已切到 Cloudflare）。
+# 不需要自定义域名可删除下面整个 [routes] 块，部署后会得到 https://webbook-cf.<子域>.workers.dev
+# routes = [
+#   { pattern = "book.your-domain.com", custom_domain = true }
+# ]
+
+# 默认登录密码（建议部署后用密钥覆盖：wrangler secret put APP_PASSWORD）
+[vars]
+APP_PASSWORD = "admin"
+
+# Smart Placement：把 Worker 调度到离 KV 更近的位置；与 run_worker_first 同用会拖慢静态资源，按需开启
+# [placement]
+# mode = "smart"
