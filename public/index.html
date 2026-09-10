@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>书签中心</title>
+<!-- 尽早发出首屏数据请求（不等 app.js 下载执行），省一个往返 -->
+<script>window.__boot = fetch("/api/bootstrap?icons=1", { credentials: "same-origin" }).catch(function(){ return new Response(null, { status: 599 }); });</script>
+<style>
+  :root{ --bg:#111217; --panel:#181a20; --panel2:#20232a; --line:#2a2e37; --tx:#e8eaed; --mut:#8b929d; --acc:#4f8cff; --acc2:#3b6fd4; --danger:#ff5d5d; --ok:#3ecf8e; --work:#ff9f43; }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;overflow:hidden}
+  a{color:inherit;text-decoration:none}
+  button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--tx);padding:6px 10px;border-radius:8px;transition:.15s;white-space:nowrap}
+  button:hover{border-color:var(--acc);background:#252830}
+  button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+  button.primary:hover{background:var(--acc2)}
+  button.danger{color:var(--danger);border-color:#5a2a2a}
+  button.danger:hover{background:#3a1d1d}
+  button.ghost{background:transparent}
+  button.small{padding:4px 8px;font-size:12px;border-radius:6px}
+
+  header{height:48px;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--panel);flex:none}
+  header h1{font-size:15px;margin:0;font-weight:600;display:flex;align-items:center;gap:8px}
+  .spacer{flex:1}
+  .tabs{display:flex;gap:4px;background:var(--panel2);padding:3px;border-radius:10px}
+  .tabs button{border:none;background:transparent;padding:5px 14px;border-radius:7px;font-size:13px;color:var(--mut)}
+  .tabs button.active{background:var(--acc);color:#fff}
+
+  .layout{display:flex;height:calc(100vh - 48px - 34px)}
+  .foot{height:34px;flex:none;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--panel);border-top:1px solid var(--line);color:var(--mut);font-size:12px}
+  .foot .dot{opacity:.5}
+  .foot a{color:var(--acc)}
+  .side{width:170px;flex:none;border-right:1px solid var(--line);background:var(--panel);padding:10px 0;overflow:auto;display:flex;flex-direction:column}
+  .side h2{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin:0 14px 8px}
+  .cat{display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;color:var(--mut);border-left:2px solid transparent}
+  .cat:hover{background:var(--panel2);color:var(--tx)}
+  .cat.active{color:var(--tx);background:var(--panel2);border-left-color:var(--acc)}
+  .cat .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+  .cat .cnt{font-size:11px;background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:999px}
+  .cat.active .cnt{background:var(--acc);color:#fff;border-color:var(--acc)}
+  .resizer{width:5px;flex:none;cursor:col-resize;background:transparent;margin-left:-3px;z-index:8}
+  .resizer:hover{background:var(--acc)}
+
+  main{flex:1;overflow:auto;padding:18px 22px}
+  .bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;position:sticky;top:0;background:var(--bg);z-index:5;padding:4px 0}
+  .bar h3{margin:0;font-size:15px;font-weight:600}
+  .bar .count{color:var(--mut);font-size:12px}
+
+  .sec{margin-bottom:18px}
+  .sec-head{display:flex;align-items:center;gap:10px;margin:0 0 8px}
+  .sec-head h4{margin:0;font-size:14px;font-weight:600;color:var(--tx);display:flex;align-items:center;gap:8px}
+  .sec-head .count{color:var(--mut);font-size:11px;background:var(--panel);border:1px solid var(--line);padding:1px 7px;border-radius:999px}
+  .items{display:flex;flex-wrap:wrap;gap:8px}
+  .item{display:inline-flex;align-items:center;gap:8px;width:180px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:grab;transition:.12s}
+  .item:hover{background:var(--panel2);border-color:var(--acc);transform:translateY(-1px)}
+  .item.dragging{opacity:.45;cursor:grabbing}
+  .item img{width:18px;height:18px;flex:none;object-fit:contain;border-radius:3px}
+  .item .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+  .sec.drop-ok{outline:2px dashed var(--acc);outline-offset:-3px;border-radius:10px;background:var(--panel2)}
+  .tabs button.drop-ok{background:var(--acc);color:#fff;outline:2px dashed #fff;outline-offset:-3px}
+  .item.drop-before{box-shadow:inset 0 3px 0 0 var(--acc)}
+  .item.drop-after{box-shadow:inset 0 -3px 0 0 var(--acc)}
+  .cat.drop-before{border-top:2px solid var(--acc)}
+  .cat.drop-after{border-bottom:2px solid var(--acc)}
+  .item img{width:18px;height:18px;flex:none;object-fit:contain;border-radius:3px}
+  .item .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+  .empty{color:var(--mut);padding:30px 0;font-size:13px}
+
+  .ctx{position:fixed;min-width:140px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 8px 28px #000a;display:none;z-index:95}
+  .ctx.show{display:block}
+  .ctx-item{padding:8px 12px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--tx);display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .ctx-item:hover{background:var(--panel2)}
+  .ctx-item.danger{color:var(--danger)}
+  .ctx-item.has-sub .ctx-arrow{color:var(--mut);font-size:11px}
+  .ctx-sub{display:block;left:0;top:0;margin:0}
+  .ctx-sep{height:1px;background:var(--line);margin:5px 4px}
+
+  .drawer{position:fixed;inset:0 0 0 auto;width:320px;max-width:88vw;background:var(--panel);border-left:1px solid var(--line);transform:translateX(100%);transition:.2s;z-index:60;display:flex;flex-direction:column}
+  .drawer.show{transform:translateX(0)}
+  .drawer-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .drawer-head h3{margin:0;font-size:15px;flex:1}
+  .drawer-body{flex:1;overflow:auto;padding:12px 16px 20px}
+  .setting{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .setting:last-child{border-bottom:none}
+  .setting>div{flex:1}
+  .setting label{font-size:13px;font-weight:500;display:block;margin-bottom:2px}
+  .setting small{font-size:11px;color:var(--mut)}
+
+  .modal{position:fixed;inset:0;background:#0008;display:none;align-items:center;justify-content:center;z-index:70}
+  .modal.show{display:flex}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;width:440px;max-width:92vw;max-height:92vh;overflow:auto}
+  .box h3{margin:0 0 14px;font-size:15px}
+  .field{margin-bottom:12px}
+  .field label{display:block;color:var(--mut);font-size:12px;margin-bottom:5px}
+  .field input,.field select,.field textarea{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:8px 10px;font:inherit}
+  .field textarea{resize:vertical;min-height:60px}
+  .row{display:flex;gap:10px;justify-content:flex-end;margin-top:8px}
+
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:9px 16px;border-radius:10px;opacity:0;transition:.25s;pointer-events:none;z-index:90;font-size:13px}
+  .toast.show{opacity:1}
+
+  @media (max-width:700px){
+    .side{width:44px;padding:10px 0}
+    .side h2,.cat .name{display:none}
+    .cat{justify-content:center;padding:10px 0}
+    .cat .cnt{transform:scale(.85)}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="siteName">🔖 书签中心</h1>
+  <div class="tabs" id="groupTabs">
+    <button data-g="personal" class="active">个人</button>
+    <button data-g="work">工作</button>
+  </div>
+  <span class="spacer"></span>
+  <button class="ghost" id="btnSettings">设置</button>
+  <button class="primary" id="btnAddBm">+ 书签</button>
+  <button class="primary" id="btnLogin">登录</button>
+</header>
+
+<div class="layout">
+  <aside class="side" id="catNav">
+    <h2>分类</h2>
+    <div id="catList"></div>
+  </aside>
+  <div class="resizer" id="sideResizer"></div>
+  <main id="mainWrap">
+    <div class="bar">
+      <h3 id="curTitle">全部</h3>
+      <span class="count" id="curCount"></span>
+      <span class="spacer"></span>
+    </div>
+    <div id="content"></div>
+  </main>
+</div>
+
+<footer class="foot">
+  <span id="siteAuthor">gai溜子到处跑</span>
+  <span class="dot">·</span>
+  <a id="siteUrl" href="https://example.com" target="_blank" rel="noopener">example.com</a>
+  <span class="dot">·</span>
+  <span id="siteVer">v20260910j</span>
+</footer>
+
+<!-- 设置抽屉 -->
+<div class="drawer" id="settingsDrawer">
+  <div class="drawer-head">
+    <h3>设置</h3>
+    <button class="ghost" id="btnCloseSettings">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div class="setting">
+      <div><label>站点信息</label><small>名称、作者、网址，显示在首页底部</small></div>
+      <button class="small" id="btnEditSite">编辑</button>
+    </div>
+    <div class="setting">
+      <div><label>分区管理</label><small>添加 / 删除「个人区 / 工作区」等分组</small></div>
+    </div>
+    <div id="groupList" style="margin:0 0 8px"></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input id="newGroupName" placeholder="新分区名称" style="flex:1;background:var(--bg);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:7px 10px;font:inherit" />
+      <button class="primary small" id="btnAddGroup">+ 添加</button>
+    </div>
+    <small style="display:block;color:var(--mut);margin:-6px 0 14px;line-height:1.6">提示：在书签上按住拖动，可把它拖到顶部分区标签（改分区）或拖到某个分类区（改分类，并随其所在分区移动）。</small>
+    <div class="setting" style="border-top:1px solid var(--line)">
+      <div><label>更新图标</label><small>抓取所有书签的 favicon，失败保持占位</small></div>
+      <button class="primary small" id="btnRefreshIcons">更新</button>
+    </div>
+    <div class="setting">
+      <div><label>备份数据</label><small>导出 JSON 到本地</small></div>
+      <button class="small" id="btnBackup">备份</button>
+    </div>
+    <div class="setting">
+      <div><label>恢复数据</label><small>从 JSON 文件恢复分类、书签、图标</small></div>
+      <button class="small" id="btnRestore">恢复</button>
+    </div>
+    <div class="setting">
+      <div><label>站点密码</label><small>修改登录密码</small></div>
+      <button class="small" id="btnPwd">修改</button>
+    </div>
+    <div class="setting">
+      <div><label>访问密码锁</label><small>开启后进站需先输入密码；关闭则公开只读</small></div>
+      <button class="small" id="btnGate">访问锁</button>
+    </div>
+    <div class="setting">
+      <div><label>免密访问密钥</label><small>生成长密钥，用带密钥的链接可直接进站</small></div>
+      <button class="small" id="btnAccessKey">管理</button>
+    </div>
+    <div class="setting">
+      <div><label>清空全部</label><small>删除所有分类和书签，建议先备份</small></div>
+      <button class="danger small" id="btnWipe">清空</button>
+    </div>
+  </div>
+</div>
+
+<!-- 登录 -->
+<div class="modal" id="loginModal">
+  <div class="box">
+    <h3>登录</h3>
+    <div class="field"><label>密码</label><input id="pwd" type="password" placeholder="请输入站点密码" /></div>
+    <div class="row"><button id="loginCancel" class="ghost">取消</button><button id="loginOk" class="primary">登录</button></div>
+  </div>
+</div>
+
+<!-- 分类编辑 -->
+<div class="modal" id="catModal">
+  <div class="box">
+    <h3 id="catTitle">新建分类</h3>
+    <div class="field"><label>名称</label><input id="catName" placeholder="分类名" /></div>
+    <div class="field"><label>归属</label><select id="catGroup"></select></div>
+    <div class="row"><button id="catCancel" class="ghost">取消</button><button id="catSave" class="primary">保存</button></div>
+  </div>
+</div>
+
+<!-- 书签编辑 -->
+<div class="modal" id="bmModal">
+  <div class="box">
+    <h3 id="bmTitle">新建书签</h3>
+    <div class="field"><label>标题</label><input id="bmTitle_in" placeholder="标题" /></div>
+    <div class="field"><label>URL</label><input id="bmUrl" placeholder="https://" /></div>
+    <div class="field"><label>分类</label><select id="bmCat"></select></div>
+    <div class="field"><label>归属</label><select id="bmGroup"></select></div>
+    <div class="field"><label>备注</label><textarea id="bmNote" placeholder="可选"></textarea></div>
+    <div class="row"><button id="bmCancel" class="ghost">取消</button><button id="bmSave" class="primary">保存</button></div>
+  </div>
+</div>
+
+<!-- 修改密码 -->
+<div class="modal" id="pwdModal">
+  <div class="box">
+    <h3>修改密码</h3>
+    <div class="field"><label>新密码</label><input id="pwdNew" type="password" placeholder="不少于 4 位" /></div>
+    <div class="field"><label>确认密码</label><input id="pwdNew2" type="password" placeholder="再输一次" /></div>
+    <div class="row"><button id="pwdCancel" class="ghost">取消</button><button id="pwdOk" class="primary">保存</button></div>
+  </div>
+</div>
+
+<!-- 免密访问密钥 -->
+<div class="modal" id="accessModal">
+  <div class="box">
+    <h3>免密访问密钥</h3>
+    <div class="field"><label>长密钥</label><input id="accessKeyIn" placeholder="自定义或点击「重新生成」" /></div>
+    <div class="field"><label>免密链接（打开即进站）</label><input id="accessLink" readonly /></div>
+    <div class="row" style="justify-content:flex-start">
+      <button class="ghost small" id="btnCopyLink">复制链接</button>
+      <button class="ghost small" id="btnRegenKey">重新生成</button>
+    </div>
+    <small style="display:block;color:var(--mut);margin:10px 0 0;line-height:1.6">重新生成后旧链接立即失效；密钥只影响「进站」，修改数据仍需站点密码。</small>
+    <div class="row"><button id="accessCancel" class="ghost">取消</button><button id="accessSave" class="primary">保存</button></div>
+  </div>
+</div>
+
+<input id="restoreFile" type="file" accept="application/json" hidden />
+
+<!-- 站点信息编辑 -->
+<div class="modal" id="siteModal">
+  <div class="box">
+    <h3>站点信息</h3>
+    <div class="field"><label>站点名称</label><input id="siteNameIn" placeholder="如 gai溜子导航站" /></div>
+    <div class="field"><label>作者</label><input id="siteAuthorIn" placeholder="如 gai溜子到处跑" /></div>
+    <div class="field"><label>网址</label><input id="siteUrlIn" placeholder="如 www.example.com" /></div>
+    <div class="row"><button id="siteCancel" class="ghost">取消</button><button id="siteSave" class="primary">保存</button></div>
+  </div>
+</div>
+
+<!-- 重命名分区 -->
+<div class="modal" id="grpModal">
+  <div class="box">
+    <h3 id="grpTitle">重命名分区</h3>
+    <div class="field"><label>名称</label><input id="grpName" placeholder="分区名" /></div>
+    <div class="row"><button id="grpCancel" class="ghost">取消</button><button id="grpSave" class="primary">保存</button></div>
+  </div>
+</div>
+
+<div class="ctx" id="ctxMenu"></div>
+
+<script src="app.js?v=202609110134"></script>
+</body>
+</html>
