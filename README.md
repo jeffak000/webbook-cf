@@ -24,6 +24,10 @@
   Single bootstrap request + localStorage snapshot → instant revisit.
 - **长缓存策略**：静态资源按版本号缓存 1 年（immutable），改版自动生效，不必手动清缓存。
   Versioned static assets cached 1 year; new builds auto-refresh.
+- **站内全局搜索**：标题 / 网址 / 备注 / 分类名实时过滤并高亮，`Ctrl/⌘+K` 聚焦、`Esc` 清空，跨所有分组与分类一次搜全。
+  In-site global search: live filter + highlight across every group & category; `Ctrl/⌘+K` to focus, `Esc` to clear.
+- **GitHub 检查更新**：页脚显示当前版本，设置里「检查更新」一键比对 GitHub 最新发行版，有新版直接跳转下载。
+  "Check for update" in settings compares against the latest GitHub release and links to downloads.
 
 ---
 
@@ -135,6 +139,7 @@ node restore.example.mjs backup.json --yes   # 反向即恢复；先不带 --yes
 | v2.0 | 2026-09-10 | 新增全站访问密码锁；后台可生成 48 位免密长密钥，凭 `/k/<key>` 免登录直接进入；修复未登录数据泄露 |
 | v3.0 | 2026-09-10 | 性能优化：新增 `/api/bootstrap?icons=1` 单接口（5 请求→1 请求）；HTML 内联预取省一个 RTT；localStorage 快照首帧渲染；Worker 内缓存热点数据；开启 HTTP/3/0-RTT/Brotli |
 | v4.0 | 2026-09-11 | 缓存加固：静态资源按版本号长缓存 1 年（immutable），改版自动生效；修复安全缺口——`run_worker_first` 强制静态资源过 Worker，未登录无法下载前端源码；新增 `bump.js` 自动版本号、`deploy.bat` 一键部署+清缓存；代码开源至 GitHub |
+| v4.1 | 2026-09-11 | 新增站内全局搜索（跨分组/分类，实时高亮 + `Ctrl/⌘+K` 快捷键）；新增「检查更新」入口（页脚版本号 + 设置里比对 GitHub releases，配套 `version.json` 自检）；Cloudflare 端已上线 `book.090803.xyz` |
 
 ---
 
