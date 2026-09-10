@@ -1,0 +1,19 @@
+# 依赖 / Dependencies
+node_modules/
+.wrangler/
+.dev.vars
+
+# 真实凭据（绝不提交）/ Real secrets — never commit
+deploy.bat
+restore-kv.mjs
+.env
+.env.local
+*.local
+
+# 个人数据备份 / Personal data backups
+*-backup*.json
+*.zip
+
+# 系统 / OS
+.DS_Store
+Thumbs.db
