@@ -5,8 +5,11 @@ let CATS = [];
 let BMS = [];
 let ICONS = {};
 let GROUPS = [{ id: "personal", name: "个人区" }, { id: "work", name: "工作区" }];
-let SITE = { name: "我的导航站", author: "站长", url: "example.com" };
-const VERSION = "202609110134";
+let SITE = { name: "gai溜子导航站", author: "gai溜子到处跑", url: "www.090803.xyz" };
+const VERSION = "202609110240";
+const APP_VERSION = "v4.1";
+const REPO_URL = "https://github.com/jeffak000/webbook-cf";
+let SEARCH_Q = "";
 let GROUP = localStorage.getItem("bm_group") || "personal";
 let ACTIVE_CAT = "all";
 let DRAG_BM = null; // 当前被拖拽的书签
@@ -20,6 +23,14 @@ function hostOf(url) {
 }
 function el(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, (m) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m])); }
+
+function hl(text, q) {
+  const s = String(text == null ? "" : text);
+  if (!q) return esc(s);
+  const i = s.toLowerCase().indexOf(String(q).toLowerCase());
+  if (i < 0) return esc(s);
+  return esc(s.slice(0, i)) + "<mark>" + esc(s.slice(i, i + q.length)) + "</mark>" + esc(s.slice(i + q.length));
+}
 
 function toast(msg) {
   let t = document.querySelector(".toast");
@@ -116,7 +127,7 @@ function renderSite() {
   const u = (SITE.url || "").trim();
   el("siteUrl").textContent = u;
   el("siteUrl").href = /^https?:\/\//i.test(u) ? u : (u ? "https://" + u : "#");
-  el("siteVer").textContent = "v" + VERSION;
+  el("siteVer").textContent = "v" + APP_VERSION;
 }
 
 function renderTabs() {
@@ -136,7 +147,7 @@ function renderCatNav() {
   all.className = "cat" + (ACTIVE_CAT === "all" ? " active" : "");
   all.dataset.virtual = "1";
   all.innerHTML = `<span class="name">全部</span><span class="cnt">${groupBms().length}</span>`;
-  all.onclick = () => { ACTIVE_CAT = "all"; render(); };
+  all.onclick = () => { SEARCH_Q = ""; if (el("search")) el("search").value = ""; ACTIVE_CAT = "all"; render(); };
   list.appendChild(all);
   for (const c of groupCats()) {
     const d = document.createElement("div");
@@ -144,7 +155,7 @@ function renderCatNav() {
     d._cat = c;
     d.draggable = true;
     d.innerHTML = `<span class="name">${esc(c.name)}</span><span class="cnt">${bmCount(c.id)}</span>`;
-    d.onclick = () => { ACTIVE_CAT = c.id; render(); };
+    d.onclick = () => { SEARCH_Q = ""; if (el("search")) el("search").value = ""; ACTIVE_CAT = c.id; render(); };
     d.addEventListener("dragstart", (e) => {
       DRAG_CAT = c; e.dataTransfer.effectAllowed = "move";
       try { e.dataTransfer.setData("text/plain", c.id); } catch {}
@@ -161,6 +172,7 @@ function renderCatNav() {
 }
 
 function renderMain() {
+  if (SEARCH_Q) { renderSearch(SEARCH_Q); return; }
   const c = el("content"); c.innerHTML = "";
   el("curTitle").textContent = groupName(GROUP);
   const gbms = groupBms();
@@ -187,6 +199,35 @@ function renderMain() {
   if (uncat.length) c.appendChild(section("未分类", uncat.length, uncat, null));
 }
 
+function renderSearch(q) {
+  const c = el("content"); c.innerHTML = "";
+  el("curTitle").textContent = "搜索";
+  const ql = q.toLowerCase();
+  // 全局搜索：跨所有分区 + 所有分类
+  const hits = sortedBms().filter((b) => {
+    const cat = sortedCats().find((x) => x.id === b.category_id);
+    const catName = cat ? cat.name : "";
+    return (b.title || "").toLowerCase().includes(ql) ||
+           (b.url || "").toLowerCase().includes(ql) ||
+           (b.note || "").toLowerCase().includes(ql) ||
+           catName.toLowerCase().includes(ql);
+  });
+  el("curCount").textContent = hits.length + " 个结果（跨分区 / 分类）";
+  if (!hits.length) { c.innerHTML = '<div class="empty">没有匹配「' + esc(q) + '」的书签</div>'; return; }
+  const byKey = {};
+  for (const b of hits) {
+    const cat = sortedCats().find((x) => x.id === b.category_id);
+    const gName = (GROUPS.find((g) => g.id === b.group) || {}).name || (b.group || "未分区");
+    const cName = cat ? cat.name : "未分类";
+    const key = gName + " / " + cName;
+    (byKey[key] = byKey[key] || []).push(b);
+  }
+  const ordered = Object.keys(byKey).sort((a, b) => a.localeCompare(b));
+  for (const key of ordered) {
+    c.appendChild(section(key, byKey[key].length, byKey[key], null));
+  }
+}
+
 function section(title, count, items, cat) {
   const sec = document.createElement("section"); sec.className = "sec"; sec._cat = cat || null;
   const head = document.createElement("div"); head.className = "sec-head";
@@ -206,7 +247,7 @@ function bmItem(b) {
   const h = hostOf(b.url);
   const d = document.createElement("div"); d.className = "item"; d._bm = b; d.draggable = true;
   d.title = `${esc(b.title)}\n${esc(b.url)}${b.note ? "\n" + esc(b.note) : ""}`;
-  d.innerHTML = `<img src="${iconSrc(h)}" alt=""/><span class="t">${esc(b.title || b.url)}</span>`;
+  d.innerHTML = `<img src="${iconSrc(h)}" alt=""/><span class="t">${hl(b.title || b.url, SEARCH_Q)}</span>`;
   d.addEventListener("dragstart", (e) => {
     DRAG_BM = b;
     e.dataTransfer.effectAllowed = "move";
@@ -718,7 +759,7 @@ el("accessSave").onclick = async () => {
 el("groupTabs").onclick = (e) => {
   const b = e.target.closest("button[data-g]");
   if (!b) return;
-  GROUP = b.dataset.g; localStorage.setItem("bm_group", GROUP); ACTIVE_CAT = "all"; render();
+  GROUP = b.dataset.g; localStorage.setItem("bm_group", GROUP); SEARCH_Q = ""; if (el("search")) el("search").value = ""; ACTIVE_CAT = "all"; render();
 };
 
 // ---------------- 侧栏宽度拖拽 ----------------
@@ -746,7 +787,37 @@ el("groupTabs").onclick = (e) => {
   });
 })();
 
+// ---------------- 搜索 ----------------
+el("search").addEventListener("input", (e) => { SEARCH_Q = e.target.value.trim(); renderMain(); });
+el("search").addEventListener("keydown", (e) => { if (e.key === "Escape") { el("search").value = ""; SEARCH_Q = ""; renderMain(); } });
+document.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); el("search").focus(); el("search").select(); } });
+
+// ---------------- 检查更新 ----------------
+el("btnCheckUpdate").onclick = () => checkUpdate(false);
+async function checkUpdate(silent) {
+  const box = el("updateInfo");
+  if (!silent) { box.style.display = "block"; box.innerHTML = "正在检查更新…"; }
+  try {
+    const r = await fetch(API + "/api/check-update");
+    const j = await r.json();
+    if (!silent) {
+      if (j.hasUpdate) {
+        box.innerHTML = '发现新版本 <b>' + esc(j.latest) + '</b>（当前 ' + esc(j.current) + '）。<br><a href="' + esc(j.url) + '" target="_blank" rel="noopener">前往 GitHub 下载 / 查看</a>' + (j.notes ? '<br><small>' + esc(j.notes) + '</small>' : '');
+      } else if (j.error) {
+        box.innerHTML = '暂无法检查更新：' + esc(j.error);
+      } else {
+        box.innerHTML = '已是最新版本 <b>' + esc(j.current) + '</b>。';
+      }
+    } else if (j.hasUpdate) {
+      toast('发现新版本 ' + j.latest + '，可在设置里更新');
+    }
+  } catch {
+    if (!silent) box.innerHTML = '检查更新失败（网络错误）';
+  }
+}
+
 // ---------------- 启动 ----------------
 updateLoginBtn();
 loadData();
 loadAccess();
+checkUpdate(true);
