@@ -1,0 +1,752 @@
+// 书签中心前端（EdgeOne Makers 同源版）
+const API = "";
+let TOKEN = localStorage.getItem("bm_token") || "";
+let CATS = [];
+let BMS = [];
+let ICONS = {};
+let GROUPS = [{ id: "personal", name: "个人区" }, { id: "work", name: "工作区" }];
+let SITE = { name: "我的导航站", author: "站长", url: "example.com" };
+const VERSION = "202609110134";
+let GROUP = localStorage.getItem("bm_group") || "personal";
+let ACTIVE_CAT = "all";
+let DRAG_BM = null; // 当前被拖拽的书签
+let DRAG_CAT = null; // 当前被拖拽的分类
+function clearDropHints() {
+  document.querySelectorAll(".drop-ok, .drop-before, .drop-after").forEach((n) => n.classList.remove("drop-ok", "drop-before", "drop-after"));
+}
+
+function hostOf(url) {
+  try { return new URL(url).host; } catch { return ""; }
+}
+function el(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, (m) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m])); }
+
+function toast(msg) {
+  let t = document.querySelector(".toast");
+  if (!t) { t = document.createElement("div"); t.className = "toast"; document.body.appendChild(t); }
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+function letterIconSvg(host) {
+  const ch = (host || "?").charAt(0).toUpperCase();
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"><rect width="18" height="18" rx="4" fill="#4b5563"/><text x="9" y="13" font-size="12" text-anchor="middle" fill="#fff" font-family="sans-serif">${ch}</text></svg>`;
+  return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
+}
+// 有整包图标时直接用内联 data URL；没有（本地快照首帧）才按需向服务端取
+const ICON_BUST = {};
+function iconSrc(host) {
+  if (!host) return letterIconSvg("?");
+  if (ICONS[host]) return ICONS[host];
+  const b = ICON_BUST[host] ? "&t=" + ICON_BUST[host] : "";
+  return "/api/icon?host=" + encodeURIComponent(host) + b;
+}
+
+async function callApi(path, opts = {}) {
+  const headers = Object.assign({}, opts.headers || {});
+  if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
+  if (opts.body && !(opts.body instanceof FormData)) headers["Content-Type"] = "application/json";
+  const res = await fetch(API + "/api" + path, Object.assign({}, opts, { headers }));
+  if (res.status === 401) {
+    TOKEN = ""; localStorage.removeItem("bm_token"); updateLoginBtn();
+    openLogin(); throw new Error("unauthorized");
+  }
+  return res;
+}
+
+function updateLoginBtn() {
+  el("btnLogin").textContent = TOKEN ? "退出" : "登录";
+  el("btnLogin").className = TOKEN ? "ghost" : "primary";
+}
+
+function applyData(j) {
+  GROUPS = j.groups || GROUPS;
+  CATS = j.categories || CATS;
+  BMS = j.bookmarks || BMS;
+  if (j.site) SITE = j.site;
+  if (!GROUPS.find((g) => g.id === GROUP)) GROUP = GROUPS[0] ? GROUPS[0].id : "personal";
+  render();
+  renderSite();
+}
+
+async function loadData() {
+  // 1) 先用本地快照秒开（离线缓存），避免首屏白屏
+  try {
+    const snap = JSON.parse(localStorage.getItem("bm_snapshot") || "null");
+    if (snap && Array.isArray(snap.categories)) applyData(snap);
+  } catch {}
+  // 2) 再拉一次服务端全量（单请求，复用 HTML 里提前发出的那个请求，省一个 RTT）
+  try {
+    let r;
+    if (window.__boot) { r = await window.__boot; window.__boot = null; }
+    else r = await callApi("/bootstrap?icons=1");
+    if (r.status === 401) {
+      TOKEN = ""; localStorage.removeItem("bm_token"); updateLoginBtn();
+      openLogin(); throw new Error("unauthorized");
+    }
+    const j = await r.json();
+    if (j.icons) ICONS = j.icons;
+    applyData(j);
+    try {
+      localStorage.setItem("bm_snapshot", JSON.stringify({ groups: GROUPS, categories: CATS, bookmarks: BMS, site: SITE }));
+    } catch {}
+  } catch (e) { if (e.message !== "unauthorized") toast("加载失败：" + e.message); }
+}
+
+function groupName(id) { const g = GROUPS.find((x) => x.id === id); return g ? g.name : "个人区"; }
+function sortedCats() { return [...CATS].sort((a, b) => (a.sort || 0) - (b.sort || 0)); }
+function sortedBms() { return [...BMS].sort((a, b) => (a.sort || 0) - (b.sort || 0)); }
+function bmsOfCat(cid) { return sortedBms().filter((b) => b.category_id === cid && b.group === GROUP); }
+function bmCount(cid) { return BMS.filter((b) => b.category_id === cid && b.group === GROUP).length; }
+function bmsOfUncat() { return groupBms().filter((b) => !b.category_id); }
+function groupBms() { return sortedBms().filter((b) => b.group === GROUP); }
+function groupCats() { return sortedCats().filter((c) => c.group === GROUP); }
+
+function render() {
+  renderTabs();
+  renderCatNav();
+  renderMain();
+}
+
+function renderSite() {
+  const name = SITE.name || "我的导航站";
+  el("siteName").textContent = "🔖 " + name;
+  document.title = name;
+  el("siteAuthor").textContent = SITE.author || "";
+  const u = (SITE.url || "").trim();
+  el("siteUrl").textContent = u;
+  el("siteUrl").href = /^https?:\/\//i.test(u) ? u : (u ? "https://" + u : "#");
+  el("siteVer").textContent = "v" + VERSION;
+}
+
+function renderTabs() {
+  const tabs = el("groupTabs"); tabs.innerHTML = "";
+  for (const g of GROUPS) {
+    const b = document.createElement("button");
+    b.dataset.g = g.id;
+    b.textContent = g.name;
+    if (g.id === GROUP) b.classList.add("active");
+    tabs.appendChild(b);
+  }
+}
+
+function renderCatNav() {
+  const list = el("catList"); list.innerHTML = "";
+  const all = document.createElement("div");
+  all.className = "cat" + (ACTIVE_CAT === "all" ? " active" : "");
+  all.dataset.virtual = "1";
+  all.innerHTML = `<span class="name">全部</span><span class="cnt">${groupBms().length}</span>`;
+  all.onclick = () => { ACTIVE_CAT = "all"; render(); };
+  list.appendChild(all);
+  for (const c of groupCats()) {
+    const d = document.createElement("div");
+    d.className = "cat" + (ACTIVE_CAT === c.id ? " active" : "");
+    d._cat = c;
+    d.draggable = true;
+    d.innerHTML = `<span class="name">${esc(c.name)}</span><span class="cnt">${bmCount(c.id)}</span>`;
+    d.onclick = () => { ACTIVE_CAT = c.id; render(); };
+    d.addEventListener("dragstart", (e) => {
+      DRAG_CAT = c; e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", c.id); } catch {}
+      d.classList.add("dragging");
+    });
+    d.addEventListener("dragend", () => { d.classList.remove("dragging"); clearDropHints(); DRAG_CAT = null; });
+    list.appendChild(d);
+  }
+  const add = document.createElement("button");
+  add.className = "ghost small"; add.style.cssText = "margin:10px 14px 0";
+  add.textContent = "+ 新建分类";
+  add.onclick = () => addCat();
+  list.appendChild(add);
+}
+
+function renderMain() {
+  const c = el("content"); c.innerHTML = "";
+  el("curTitle").textContent = groupName(GROUP);
+  const gbms = groupBms();
+  el("curCount").textContent = `${gbms.length} 书签 / ${groupCats().length} 分类`;
+
+  if (ACTIVE_CAT !== "all") {
+    const cat = groupCats().find((x) => x.id === ACTIVE_CAT);
+    if (!cat) { ACTIVE_CAT = "all"; return renderMain(); }
+    const items = bmsOfCat(cat.id);
+    c.appendChild(section(cat.name, items.length, items, cat));
+    return;
+  }
+
+  if (!gbms.length && !groupCats().length) {
+    c.innerHTML = `<div class="empty">当前分区还没有内容，点击「+ 书签」或「+ 新建分类」开始添加。</div>`;
+    return;
+  }
+
+  for (const cat of groupCats()) {
+    const items = bmsOfCat(cat.id);
+    c.appendChild(section(cat.name, items.length, items, cat));
+  }
+  const uncat = gbms.filter((b) => !b.category_id);
+  if (uncat.length) c.appendChild(section("未分类", uncat.length, uncat, null));
+}
+
+function section(title, count, items, cat) {
+  const sec = document.createElement("section"); sec.className = "sec"; sec._cat = cat || null;
+  const head = document.createElement("div"); head.className = "sec-head";
+  head.innerHTML = `<h4>${esc(title)}</h4><span class="count">${count}</span>`;
+  sec.appendChild(head);
+  const box = document.createElement("div"); box.className = "items";
+  if (!items.length) {
+    box.innerHTML = `<div class="empty" style="padding:10px 0">该分类下暂无书签</div>`;
+  } else {
+    for (const b of items) box.appendChild(bmItem(b));
+  }
+  sec.appendChild(box);
+  return sec;
+}
+
+function bmItem(b) {
+  const h = hostOf(b.url);
+  const d = document.createElement("div"); d.className = "item"; d._bm = b; d.draggable = true;
+  d.title = `${esc(b.title)}\n${esc(b.url)}${b.note ? "\n" + esc(b.note) : ""}`;
+  d.innerHTML = `<img src="${iconSrc(h)}" alt=""/><span class="t">${esc(b.title || b.url)}</span>`;
+  d.addEventListener("dragstart", (e) => {
+    DRAG_BM = b;
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", b.id); } catch {}
+    d.classList.add("dragging");
+  });
+  d.addEventListener("dragend", () => { d.classList.remove("dragging"); clearDropHints(); DRAG_BM = null; });
+  return d;
+}
+
+// ---------------- 右键菜单 ----------------
+// items 支持：{label, onClick, danger} 普通项；{label, submenu:[...]} 子菜单；{sep:true} 分隔线
+function showCtx(x, y, items) {
+  const m = el("ctxMenu");
+  m.innerHTML = "";
+  fillCtx(m, items);
+  m.classList.add("show");
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.min(x, window.innerWidth - r.width - 8) + "px";
+  m.style.top = Math.min(y, window.innerHeight - r.height - 8) + "px";
+}
+function fillCtx(m, items) {
+  for (const it of items) {
+    if (it.sep) { const s = document.createElement("div"); s.className = "ctx-sep"; m.appendChild(s); continue; }
+    const d = document.createElement("div");
+    d.className = "ctx-item" + (it.danger ? " danger" : "") + (it.submenu ? " has-sub" : "");
+    d.innerHTML = `<span>${esc(it.label)}</span>` + (it.submenu ? `<span class="ctx-arrow">▸</span>` : "");
+    if (it.submenu) {
+      d.addEventListener("mouseenter", () => {
+        m.querySelectorAll(".ctx-sub").forEach((n) => n.remove());
+        const sub = document.createElement("div");
+        sub.className = "ctx ctx-sub";
+        fillCtx(sub, it.submenu);
+        m.appendChild(sub);
+        const dr = d.getBoundingClientRect();
+        sub.style.left = (dr.right - 4) + "px";
+        sub.style.top = dr.top + "px";
+        const sr = sub.getBoundingClientRect();
+        if (sr.right > window.innerWidth - 8) sub.style.left = (dr.left - sr.width + 4) + "px";
+        if (sr.bottom > window.innerHeight - 8) sub.style.top = (window.innerHeight - sr.height - 8) + "px";
+      });
+    } else {
+      d.onclick = () => { hideCtx(); it.onClick && it.onClick(); };
+    }
+    m.appendChild(d);
+  }
+}
+function hideCtx() { el("ctxMenu").classList.remove("show"); }
+
+document.addEventListener("click", hideCtx);
+document.addEventListener("scroll", hideCtx, true);
+
+el("content").addEventListener("contextmenu", (e) => {
+  const item = e.target.closest(".item");
+  if (!item) return;
+  e.preventDefault();
+  const b = item._bm;
+  showCtx(e.clientX, e.clientY, [
+    { label: "打开链接", onClick: () => window.open(b.url, "_blank") },
+    { label: "编辑", onClick: () => editBm(b) },
+    { label: "刷新图标", onClick: () => refreshBmIcon(b) },
+    { label: "删除", danger: true, onClick: () => delBm(b) },
+  ]);
+});
+el("catList").addEventListener("contextmenu", (e) => {
+  const cat = e.target.closest(".cat");
+  if (!cat || cat.dataset.virtual) return;
+  e.preventDefault();
+  const c = cat._cat;
+  const groupItems = GROUPS.map((g) => ({
+    label: (g.id === c.group ? "✓ " : "") + g.name,
+    onClick: () => moveCatToGroup(c, g.id),
+  }));
+  showCtx(e.clientX, e.clientY, [
+    { label: "编辑", onClick: () => editCat(c) },
+    { label: "移动到分区", submenu: groupItems },
+    { label: "删除", danger: true, onClick: () => delCat(c) },
+  ]);
+});
+// 左键点击书签仍打开链接
+el("content").addEventListener("click", (e) => {
+  const item = e.target.closest(".item");
+  if (item && item._bm) window.open(item._bm.url, "_blank");
+});
+
+// ---------------- 拖拽：书签 & 分类 ----------------
+// 书签：
+//   拖到分区标签   -> 改 group（归入该分区「未分类」）
+//   拖到分类区/书签 -> 改 category_id + group，并按落点插入排序（移动位置）
+//   拖到「未分类」区 -> 取消分类、留当前分区，并按落点排序
+// 分类（左侧列表）：
+//   拖到分区标签   -> 改 group（整组搬家，书签级联跟随）
+//   在列表内拖动   -> 改 sort（调整分类显示顺序）
+function insertSort(filtered, idx) {
+  if (!filtered.length) return 0;
+  if (idx <= 0) return filtered[0].sort - 1;
+  if (idx >= filtered.length) return filtered[filtered.length - 1].sort + 1;
+  return (filtered[idx - 1].sort + filtered[idx].sort) / 2;
+}
+
+el("groupTabs").addEventListener("dragover", (e) => {
+  const b = e.target.closest("button[data-g]");
+  if (b && (DRAG_BM || DRAG_CAT)) { e.preventDefault(); clearDropHints(); b.classList.add("drop-ok"); }
+});
+el("groupTabs").addEventListener("drop", async (e) => {
+  const b = e.target.closest("button[data-g]");
+  if (!b) return;
+  if (DRAG_BM) {
+    e.preventDefault(); b.classList.remove("drop-ok"); moveToGroup(DRAG_BM, b.dataset.g);
+  } else if (DRAG_CAT) {
+    e.preventDefault(); b.classList.remove("drop-ok");
+    if (DRAG_CAT.group === b.dataset.g) { toast("已在该分区"); return; }
+    await needAuth();
+    const r = await callApi("/categories/" + DRAG_CAT.id, { method: "PUT", body: JSON.stringify({ group: b.dataset.g }) });
+    if (r.ok) { toast("已移动到「" + groupName(b.dataset.g) + "」"); await loadData(); renderGroupManage(); } else toast("移动失败");
+  }
+});
+
+el("content").addEventListener("dragover", (e) => {
+  if (!DRAG_BM) return;
+  const sec = e.target.closest(".sec");
+  if (!sec) return;
+  e.preventDefault(); clearDropHints(); sec.classList.add("drop-ok");
+  const item = e.target.closest(".item");
+  if (item && item._bm && item._bm.id !== DRAG_BM.id) {
+    const r = item.getBoundingClientRect();
+    item.classList.add((e.clientY - r.top) < r.height / 2 ? "drop-before" : "drop-after");
+  }
+});
+el("content").addEventListener("drop", (e) => {
+  if (!DRAG_BM) return;
+  const sec = e.target.closest(".sec");
+  if (!sec) return;
+  e.preventDefault(); clearDropHints();
+  const cat = sec._cat; // null = 未分类
+  const list = sortedBms().filter((b) => cat ? (b.category_id === cat.id && b.group === cat.group) : (!b.category_id && b.group === GROUP));
+  const filtered = list.filter((b) => b.id !== DRAG_BM.id);
+  const item = e.target.closest(".item");
+  let idx = filtered.length;
+  if (item && item._bm && item._bm.id !== DRAG_BM.id) {
+    const r = item.getBoundingClientRect();
+    const before = (e.clientY - r.top) < r.height / 2;
+    const i = filtered.findIndex((b) => b.id === item._bm.id);
+    if (i >= 0) idx = before ? i : i + 1;
+  }
+  applyMove(DRAG_BM, { category_id: cat ? cat.id : null, group: cat ? cat.group : GROUP, sort: insertSort(filtered, idx) });
+});
+
+// 左侧分类列表：拖动分类改顺序 / 拖到分区标签搬家
+el("catList").addEventListener("dragover", (e) => {
+  if (!DRAG_CAT) return;
+  const c = e.target.closest(".cat");
+  if (!c || c.dataset.virtual) return;
+  e.preventDefault(); clearDropHints();
+  const r = c.getBoundingClientRect();
+  c.classList.add((e.clientY - r.top) < r.height / 2 ? "drop-before" : "drop-after");
+});
+el("catList").addEventListener("drop", async (e) => {
+  if (!DRAG_CAT) return;
+  const c = e.target.closest(".cat");
+  if (!c || c.dataset.virtual) return;
+  e.preventDefault(); clearDropHints();
+  const target = c._cat;
+  if (!target || target.id === DRAG_CAT.id) return;
+  const list = groupCats().filter((x) => x.id !== DRAG_CAT.id);
+  const r = c.getBoundingClientRect();
+  const before = (e.clientY - r.top) < r.height / 2;
+  const i = list.findIndex((x) => x.id === target.id);
+  const idx = i >= 0 ? (before ? i : i + 1) : list.length;
+  await needAuth();
+  const rr = await callApi("/categories/" + DRAG_CAT.id, { method: "PUT", body: JSON.stringify({ sort: insertSort(list, idx) }) });
+  if (rr.ok) { toast("已调整顺序"); await loadData(); } else toast("排序失败");
+});
+
+async function moveToGroup(bm, groupId) {
+  if (bm.group === groupId) { toast("已在「" + groupName(groupId) + "」"); return; }
+  await needAuth();
+  const r = await callApi("/bookmarks/" + bm.id, { method: "PUT", body: JSON.stringify({ group: groupId, category_id: null }) });
+  if (r.ok) { toast("已移动到「" + groupName(groupId) + "」"); await loadData(); } else toast("移动失败");
+}
+async function moveCatToGroup(c, groupId) {
+  if (c.group === groupId) { toast("已在「" + groupName(groupId) + "」"); return; }
+  await needAuth();
+  const r = await callApi("/categories/" + c.id, { method: "PUT", body: JSON.stringify({ group: groupId }) });
+  if (r.ok) { toast("已移动到「" + groupName(groupId) + "」"); await loadData(); renderGroupManage(); } else toast("移动失败");
+}
+async function applyMove(bm, patch) {
+  await needAuth();
+  const r = await callApi("/bookmarks/" + bm.id, { method: "PUT", body: JSON.stringify(patch) });
+  if (r.ok) { toast("已更新"); await loadData(); } else toast("移动失败");
+}
+
+// ---------------- 分类 ----------------
+function addCat() {
+  el("catTitle").textContent = "新建分类";
+  el("catName").value = "";
+  fillGroupSelect("catGroup", GROUP);
+  el("catModal")._id = null;
+  show("catModal"); el("catName").focus();
+}
+function editCat(c) {
+  el("catTitle").textContent = "编辑分类";
+  el("catName").value = c.name;
+  fillGroupSelect("catGroup", c.group || "personal");
+  el("catModal")._id = c.id;
+  show("catModal"); el("catName").focus();
+}
+async function delCat(c) {
+  if (!confirm(`删除分类「${c.name}」及其下 ${bmCount(c.id)} 个书签？`)) return;
+  await needAuth();
+  const r = await callApi("/categories/" + c.id, { method: "DELETE" });
+  if (r.ok) { toast("已删除"); if (ACTIVE_CAT === c.id) ACTIVE_CAT = "all"; await loadData(); } else toast("删除失败");
+}
+
+// ---------------- 书签 ----------------
+function addBm() {
+  el("bmTitle").textContent = "新建书签";
+  el("bmTitle_in").value = ""; el("bmUrl").value = ""; el("bmNote").value = "";
+  fillCatSelect(""); fillGroupSelect("bmGroup", GROUP);
+  el("bmModal")._id = null; show("bmModal"); el("bmUrl").focus();
+}
+function editBm(b) {
+  el("bmTitle").textContent = "编辑书签";
+  el("bmTitle_in").value = b.title || ""; el("bmUrl").value = b.url || ""; el("bmNote").value = b.note || "";
+  fillCatSelect(b.category_id || ""); fillGroupSelect("bmGroup", b.group || GROUP);
+  el("bmModal")._id = b.id; show("bmModal");
+}
+function fillCatSelect(sel) {
+  const s = el("bmCat"); s.innerHTML = `<option value="">（未分类）</option>`;
+  for (const c of groupCats()) s.insertAdjacentHTML("beforeend", `<option value="${c.id}"${c.id === sel ? " selected" : ""}>${esc(c.name)}</option>`);
+}
+function fillGroupSelect(selId, val) {
+  const s = el(selId); s.innerHTML = "";
+  for (const g of GROUPS) s.insertAdjacentHTML("beforeend", `<option value="${g.id}"${g.id === val ? " selected" : ""}>${esc(g.name)}</option>`);
+}
+async function delBm(b) {
+  if (!confirm(`删除书签「${b.title || b.url}」？`)) return;
+  await needAuth();
+  const r = await callApi("/bookmarks/" + b.id, { method: "DELETE" });
+  if (r.ok) { toast("已删除"); await loadData(); } else toast("删除失败");
+}
+async function refreshBmIcon(b) {
+  const h = hostOf(b.url); if (!h) return;
+  await needAuth();
+  toast("正在刷新图标…");
+  const r = await callApi("/icons/refresh", { method: "POST", body: JSON.stringify({ host: h }) });
+  if (r.ok) {
+    const x = await r.json();
+    toast(x.hasIcon ? "图标已更新" : "未获取到，已用占位图");
+    await loadData();
+  } else toast("刷新失败");
+}
+
+// ---------------- 鉴权 ----------------
+function show(id) { el(id).classList.add("show"); }
+function hide(id) { el(id).classList.remove("show"); }
+function openLogin() { el("pwd").value = ""; show("loginModal"); el("pwd").focus(); }
+async function needAuth() {
+  if (TOKEN) return;
+  openLogin();
+  return new Promise((resolve) => { el("loginModal")._resolve = resolve; });
+}
+el("btnLogin").onclick = async () => {
+  if (TOKEN) {
+    try { await callApi("/logout", { method: "POST" }); } catch {}
+    TOKEN = ""; localStorage.removeItem("bm_token"); updateLoginBtn(); toast("已退出");
+    setTimeout(() => location.reload(), 300);
+  } else openLogin();
+};
+el("loginCancel").onclick = () => { hide("loginModal"); resolveLogin(false); };
+el("loginOk").onclick = async () => {
+  const r = await callApi("/login", { method: "POST", body: JSON.stringify({ password: el("pwd").value }) });
+  if (r.ok) {
+    const j = await r.json(); TOKEN = j.token; localStorage.setItem("bm_token", TOKEN); updateLoginBtn(); hide("loginModal"); toast("登录成功"); resolveLogin(true);
+  } else { toast("密码错误"); resolveLogin(false); }
+};
+el("pwd").addEventListener("keydown", (e) => { if (e.key === "Enter") el("loginOk").click(); });
+function resolveLogin(ok) {
+  const r = el("loginModal")._resolve;
+  el("loginModal")._resolve = null;
+  if (r) r(ok);
+}
+
+// ---------------- 分类 / 书签 保存 ----------------
+el("catCancel").onclick = () => hide("catModal");
+el("catSave").onclick = async () => {
+  await needAuth();
+  const name = el("catName").value.trim(); if (!name) return toast("请输入名称");
+  const payload = { name, group: el("catGroup").value };
+  const id = el("catModal")._id;
+  const r = id ? await callApi("/categories/" + id, { method: "PUT", body: JSON.stringify(payload) })
+               : await callApi("/categories", { method: "POST", body: JSON.stringify(payload) });
+  if (r.ok) { hide("catModal"); await loadData(); } else toast("保存失败");
+};
+
+el("bmCancel").onclick = () => hide("bmModal");
+el("bmSave").onclick = async () => {
+  await needAuth();
+  const url = el("bmUrl").value.trim(); if (!url) return toast("请输入 URL");
+  const payload = {
+    title: el("bmTitle_in").value.trim() || url,
+    url,
+    category_id: el("bmCat").value || null,
+    group: el("bmGroup").value,
+    note: el("bmNote").value.trim() || null
+  };
+  const id = el("bmModal")._id;
+  const r = id ? await callApi("/bookmarks/" + id, { method: "PUT", body: JSON.stringify(payload) })
+               : await callApi("/bookmarks", { method: "POST", body: JSON.stringify(payload) });
+  if (r.ok) {
+    hide("bmModal");
+    const h = hostOf(payload.url);
+    if (h) { delete ICONS[h]; ICON_BUST[h] = Date.now(); } // 让该图标重新拉取
+    await loadData();
+  } else toast("保存失败");
+};
+
+// ---------------- 设置抽屉 ----------------
+el("btnSettings").onclick = () => { renderGroupManage(); show("settingsDrawer"); };
+el("btnCloseSettings").onclick = () => hide("settingsDrawer");
+el("settingsDrawer").onclick = (e) => { if (e.target === el("settingsDrawer")) hide("settingsDrawer"); };
+el("btnAddBm").onclick = addBm;
+
+// ---------------- 站点信息（首页展示，可在设置里修改） ----------------
+el("btnEditSite").onclick = () => {
+  el("siteNameIn").value = SITE.name || "";
+  el("siteAuthorIn").value = SITE.author || "";
+  el("siteUrlIn").value = SITE.url || "";
+  show("siteModal");
+};
+el("siteCancel").onclick = () => hide("siteModal");
+el("siteSave").onclick = async () => {
+  await needAuth();
+  const payload = {
+    name: el("siteNameIn").value.trim() || "我的导航站",
+    author: el("siteAuthorIn").value.trim(),
+    url: el("siteUrlIn").value.trim(),
+  };
+  const r = await callApi("/site", { method: "PUT", body: JSON.stringify(payload) });
+  if (r.ok) { SITE = await r.json(); hide("siteModal"); renderSite(); toast("已保存站点信息"); }
+  else toast("保存失败");
+};
+
+function renderGroupManage() {
+  const box = el("groupList"); box.innerHTML = "";
+  for (const g of GROUPS) {
+    const row = document.createElement("div"); row.className = "grp-row";
+    row.innerHTML = `<span class="grp-name">${esc(g.name)}</span>`;
+    const ren = document.createElement("button");
+    ren.className = "small"; ren.textContent = "重命名";
+    ren.onclick = () => renameGroup(g);
+    const del = document.createElement("button");
+    del.className = "danger small"; del.textContent = "删除";
+    del.onclick = async () => {
+      if (GROUPS.length <= 1) return toast("至少保留一个分区");
+      if (!confirm(`删除分区「${g.name}」？其下分类和书签会移到「${groupName(GROUPS.find((x) => x.id !== g.id).id)}」`)) return;
+      await needAuth();
+      const r = await callApi("/groups/" + g.id, { method: "DELETE" });
+      if (r.ok) { const j = await r.json(); if (GROUP === g.id) GROUP = j.fallback; localStorage.setItem("bm_group", GROUP); toast("已删除分区"); await loadData(); renderGroupManage(); }
+      else toast("删除失败");
+    };
+    row.appendChild(ren);
+    row.appendChild(del);
+    box.appendChild(row);
+  }
+}
+el("btnAddGroup").onclick = async () => {
+  const name = el("newGroupName").value.trim(); if (!name) return toast("请输入分区名");
+  await needAuth();
+  const r = await callApi("/groups", { method: "POST", body: JSON.stringify({ name }) });
+  if (r.ok) { el("newGroupName").value = ""; toast("已添加分区"); await loadData(); renderGroupManage(); }
+  else { const j = await r.json().catch(() => ({})); toast(j.error || "添加失败"); }
+};
+function renameGroup(g) {
+  el("grpTitle").textContent = "重命名分区";
+  el("grpName").value = g.name;
+  el("grpModal")._id = g.id;
+  show("grpModal"); el("grpName").focus();
+}
+el("grpCancel").onclick = () => hide("grpModal");
+el("grpSave").onclick = async () => {
+  await needAuth();
+  const name = el("grpName").value.trim(); if (!name) return toast("请输入名称");
+  const id = el("grpModal")._id;
+  const r = await callApi("/groups/" + id, { method: "PUT", body: JSON.stringify({ name }) });
+  if (r.ok) { hide("grpModal"); toast("已重命名"); await loadData(); renderGroupManage(); }
+  else toast("保存失败");
+};
+el("grpName").addEventListener("keydown", (e) => { if (e.key === "Enter") el("grpSave").click(); });
+
+el("btnBackup").onclick = async () => {
+  await needAuth();
+  const r = await callApi("/backup");
+  if (!r.ok) return toast("备份失败");
+  const j = await r.json();
+  const blob = new Blob([JSON.stringify(j, null, 2)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "bookmarks-" + new Date().toISOString().slice(0, 10) + ".json"; a.click();
+  toast("已下载备份");
+};
+el("btnRestore").onclick = () => el("restoreFile").click();
+el("restoreFile").onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  await needAuth();
+  const text = await f.text();
+  let j; try { j = JSON.parse(text); } catch { return toast("JSON 解析失败"); }
+  const r = await callApi("/restore", { method: "POST", body: JSON.stringify(j) });
+  if (r.ok) { const x = await r.json(); toast(`恢复完成：分类 ${x.categories} / 书签 ${x.bookmarks} / 图标 ${x.icons}`); await loadData(); }
+  else toast("恢复失败");
+  e.target.value = "";
+};
+el("btnWipe").onclick = async () => {
+  if (!confirm("确定清空全部分类和书签？此操作不可恢复，建议先备份！")) return;
+  await needAuth();
+  const r = await callApi("/data", { method: "DELETE" });
+  if (r.ok) { toast("已清空"); ACTIVE_CAT = "all"; await loadData(); } else toast("清空失败");
+};
+el("btnRefreshIcons").onclick = async () => {
+  await needAuth();
+  toast("正在更新图标…");
+  const r = await callApi("/icons/refresh", { method: "POST" });
+  if (r.ok) {
+    const x = await r.json();
+    const now = Date.now();
+    BMS.forEach((b) => { const h = hostOf(b.url); if (h) ICON_BUST[h] = now; });
+    ICONS = {}; // 强制重新从服务端取
+    render();
+    toast(`图标更新：${x.cached}/${x.hosts}`);
+  } else toast("更新失败");
+};
+el("btnPwd").onclick = () => { el("pwdNew").value = ""; el("pwdNew2").value = ""; show("pwdModal"); el("pwdNew").focus(); };
+el("pwdCancel").onclick = () => hide("pwdModal");
+el("pwdOk").onclick = async () => {
+  await needAuth();
+  const p1 = el("pwdNew").value.trim(), p2 = el("pwdNew2").value.trim();
+  if (!p1 || p1.length < 4) return toast("密码至少 4 位");
+  if (p1 !== p2) return toast("两次密码不一致");
+  const r = await callApi("/password", { method: "POST", body: JSON.stringify({ password: p1 }) });
+  if (r.ok) {
+    const j = await r.json(); TOKEN = j.token; localStorage.setItem("bm_token", TOKEN); updateLoginBtn();
+    hide("pwdModal"); toast("密码已修改，请牢记新密码");
+  } else toast("修改失败");
+};
+
+// ---------------- 访问锁 / 免密密钥 ----------------
+let ACCESS = { gate: true, key: "" };
+async function loadAccess() {
+  try {
+    const headers = {};
+    if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
+    const r = await fetch(API + "/api/access", { headers });
+    if (!r.ok) return;
+    ACCESS = await r.json();
+    el("btnGate").textContent = ACCESS.gate ? "已开启（点击关闭）" : "已关闭（点击开启）";
+    el("btnGate").className = ACCESS.gate ? "primary small" : "small";
+  } catch {}
+}
+function updateAccessLink() {
+  const k = el("accessKeyIn").value.trim();
+  el("accessLink").value = k ? location.origin + "/k/" + k : "";
+}
+el("btnGate").onclick = async () => {
+  await needAuth();
+  const r = await callApi("/access", { method: "POST", body: JSON.stringify({ gate: !ACCESS.gate }) });
+  if (r.ok) {
+    ACCESS = await r.json();
+    await loadAccess();
+    toast(ACCESS.gate ? "访问锁已开启，进站需要密码" : "访问锁已关闭，站点公开只读");
+  } else toast("操作失败");
+};
+el("btnAccessKey").onclick = async () => {
+  await needAuth();
+  await loadAccess();
+  el("accessKeyIn").value = ACCESS.key || "";
+  updateAccessLink();
+  show("accessModal");
+};
+el("accessKeyIn").oninput = updateAccessLink;
+el("btnRegenKey").onclick = async () => {
+  const r = await callApi("/access", { method: "POST", body: JSON.stringify({ regenerate: true }) });
+  if (r.ok) {
+    ACCESS = await r.json();
+    el("accessKeyIn").value = ACCESS.key;
+    updateAccessLink();
+    toast("已生成新密钥，旧链接立即失效");
+  } else toast("生成失败");
+};
+el("btnCopyLink").onclick = async () => {
+  const v = el("accessLink").value;
+  if (!v) return toast("请先生成密钥");
+  try { await navigator.clipboard.writeText(v); toast("链接已复制"); }
+  catch { el("accessLink").select(); try { document.execCommand("copy"); toast("链接已复制"); } catch { toast("复制失败，请手动复制"); } }
+};
+el("accessCancel").onclick = () => hide("accessModal");
+el("accessSave").onclick = async () => {
+  const k = el("accessKeyIn").value.trim();
+  if (k && k.length < 8) return toast("密钥至少 8 位");
+  const r = await callApi("/access", { method: "POST", body: JSON.stringify({ key: k }) });
+  if (r.ok) {
+    ACCESS = await r.json();
+    el("accessKeyIn").value = ACCESS.key;
+    updateAccessLink();
+    hide("accessModal");
+    toast("密钥已保存");
+  } else toast("保存失败");
+};
+
+// ---------------- Tabs ----------------
+el("groupTabs").onclick = (e) => {
+  const b = e.target.closest("button[data-g]");
+  if (!b) return;
+  GROUP = b.dataset.g; localStorage.setItem("bm_group", GROUP); ACTIVE_CAT = "all"; render();
+};
+
+// ---------------- 侧栏宽度拖拽 ----------------
+(function initResizer() {
+  const sw = localStorage.getItem("bm_side_w");
+  if (sw) el("catNav").style.width = sw + "px";
+  const rz = el("sideResizer");
+  rz.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = el("catNav").offsetWidth;
+    function mv(ev) {
+      const w = Math.max(120, Math.min(440, startW + ev.clientX - startX));
+      el("catNav").style.width = w + "px";
+    }
+    function up() {
+      document.removeEventListener("mousemove", mv);
+      document.removeEventListener("mouseup", up);
+      document.body.style.cursor = "";
+      localStorage.setItem("bm_side_w", el("catNav").offsetWidth);
+    }
+    document.addEventListener("mousemove", mv);
+    document.addEventListener("mouseup", up);
+    document.body.style.cursor = "col-resize";
+  });
+})();
+
+// ---------------- 启动 ----------------
+updateLoginBtn();
+loadData();
+loadAccess();
