@@ -13,6 +13,8 @@
 // ---------------------------------------------------------------------------
 
 const PUBLIC = new Set(["categories", "bookmarks", "icon", "health"]);
+const APP_VERSION = "v4.1";                  // 语义版本，对应 GitHub 上的发行版
+const REPO_VERSION_URL = "https://raw.githubusercontent.com/jeffak000/webbook-cf/main/version.json";
 
 // --------------------------- 基础工具 ---------------------------
 function json(body, status = 200, extra = {}) {
@@ -201,7 +203,7 @@ async function getSite(env) {
   let o = (await kvGet(env, "data/site.json")) || {};
   if (!o.name) o.name = "gai溜子导航站";
   if (!o.author) o.author = "gai溜子到处跑";
-  if (!o.url) o.url = "example.com";
+  if (!o.url) o.url = "www.090803.xyz";
   return o;
 }
 async function setSite(env, o) {
@@ -253,6 +255,49 @@ function authCookie(token, maxAge, secure) {
 }
 function escHtml(s) {
   return String(s == null ? "" : s).replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
+}
+
+function cmpVer(a, b) {
+  const pa = String(a || "").replace(/^v/i, "").split(".").map((x) => parseInt(x, 10) || 0);
+  const pb = String(b || "").replace(/^v/i, "").split(".").map((x) => parseInt(x, 10) || 0);
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (x !== y) return x - y;
+  }
+  return 0;
+}
+
+// 检查 GitHub 仓库是否发布了更新；结果在 isolate 内缓存 5 分钟，避免频繁请求
+let UPDATE_CACHE = { t: 0, v: null };
+async function checkUpdate(env) {
+  if (UPDATE_CACHE.v && Date.now() - UPDATE_CACHE.t < 300000) return json(UPDATE_CACHE.v);
+  const out = {
+    current: APP_VERSION,
+    latest: null,
+    url: "https://github.com/jeffak000/webbook-cf/releases",
+    notes: "",
+    hasUpdate: false,
+    error: null,
+  };
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    const r = await fetch(REPO_VERSION_URL, { signal: ctrl.signal, redirect: "follow" });
+    clearTimeout(timer);
+    if (!r.ok) { out.error = "仓库尚未发布版本信息"; }
+    else {
+      const j = await r.json().catch(() => null);
+      if (j && j.version) {
+        out.latest = j.version;
+        out.url = j.url || out.url;
+        out.notes = j.notes || "";
+        out.hasUpdate = cmpVer(j.version, APP_VERSION) > 0;
+      } else { out.error = "版本信息格式错误"; }
+    }
+  } catch { out.error = "无法连接 GitHub"; }
+  UPDATE_CACHE = { t: Date.now(), v: out };
+  return json(out);
 }
 
 // 未通过访问锁时返回的锁屏页（不依赖任何静态资源）
@@ -456,6 +501,10 @@ export default {
     const head = parts[0] || "";
 
     if (head === "health") return json({ ok: true });
+
+    // 版本与更新检查：公开接口（不要求登录），供访客/下载者自查是否有新版
+    if (head === "version" && method === "GET") return json({ version: APP_VERSION });
+    if (head === "check-update" && method === "GET") return checkUpdate(env);
 
     if (method === "POST" && head === "login") {
       const body = await readBody(request);
