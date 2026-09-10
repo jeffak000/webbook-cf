@@ -1,0 +1,6 @@
+{
+  "version": "v4.1",
+  "url": "https://github.com/jeffak000/webbook-cf/releases",
+  "notes": "新增站内全局搜索（跨分组/分类，实时高亮 + Ctrl/⌘+K 快捷键）；新增「检查更新」入口（页脚版本号 + 设置里比对 GitHub releases）。部署见 README。",
+  "updatedAt": "2026-09-11"
+}
