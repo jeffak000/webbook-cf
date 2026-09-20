@@ -6,7 +6,7 @@ let BMS = [];
 let ICONS = {};
 let GROUPS = [{ id: "personal", name: "个人区" }, { id: "work", name: "工作区" }];
 let SITE = { name: "gai溜子导航站", author: "gai溜子到处跑", url: "www.090803.xyz" };
-const VERSION = "202609201615";
+const VERSION = "202609201616";
 const APP_VERSION = "v4.2";
 const REPO_URL = "https://github.com/jeffak000/webbook-cf";
 let SEARCH_Q = "";
@@ -14,6 +14,7 @@ let GROUP = localStorage.getItem("bm_group") || "personal";
 let ACTIVE_CAT = "all";
 let DRAG_BM = null; // 当前被拖拽的书签
 let DRAG_CAT = null; // 当前被拖拽的分类
+let DRAG_GRP = null; // 当前被拖拽的分区
 function clearDropHints() {
   document.querySelectorAll(".drop-ok, .drop-before, .drop-after").forEach((n) => n.classList.remove("drop-ok", "drop-before", "drop-after"));
 }
@@ -86,7 +87,7 @@ function applyData(j) {
   CATS = j.categories || CATS;
   BMS = j.bookmarks || BMS;
   if (j.site) SITE = j.site;
-  if (!GROUPS.find((g) => g.id === GROUP)) GROUP = GROUPS[0] ? GROUPS[0].id : "personal";
+  if (!GROUPS.find((g) => g.id === GROUP)) { const sg = sortedGroups(); GROUP = sg[0] ? sg[0].id : "personal"; }
   render();
   renderSite();
 }
@@ -118,6 +119,7 @@ async function loadData() {
 
 function groupName(id) { const g = GROUPS.find((x) => x.id === id); return g ? g.name : "个人区"; }
 function sortedCats() { return [...CATS].sort((a, b) => (a.sort || 0) - (b.sort || 0)); }
+function sortedGroups() { return [...GROUPS].sort((a, b) => (a.sort || 0) - (b.sort || 0)); }
 function sortedBms() { return [...BMS].sort((a, b) => (a.sort || 0) - (b.sort || 0)); }
 function bmsOfCat(cid) { return sortedBms().filter((b) => b.category_id === cid && b.group === GROUP); }
 function bmCount(cid) { return BMS.filter((b) => b.category_id === cid && b.group === GROUP).length; }
@@ -144,7 +146,7 @@ function renderSite() {
 
 function renderTabs() {
   const tabs = el("groupTabs"); tabs.innerHTML = "";
-  for (const g of GROUPS) {
+  for (const g of sortedGroups()) {
     const b = document.createElement("button");
     b.dataset.g = g.id;
     b.textContent = g.name;
@@ -494,7 +496,7 @@ function fillCatSelect(sel) {
 }
 function fillGroupSelect(selId, val) {
   const s = el(selId); s.innerHTML = "";
-  for (const g of GROUPS) s.insertAdjacentHTML("beforeend", `<option value="${g.id}"${g.id === val ? " selected" : ""}>${esc(g.name)}</option>`);
+  for (const g of sortedGroups()) s.insertAdjacentHTML("beforeend", `<option value="${g.id}"${g.id === val ? " selected" : ""}>${esc(g.name)}</option>`);
 }
 async function delBm(b) {
   if (!confirm(`删除书签「${b.title || b.url}」？`)) return;
@@ -604,11 +606,12 @@ el("siteSave").onclick = async () => {
   else toast("保存失败");
 };
 
+function clearGrpHints() { document.querySelectorAll(".grp-row.drop-before, .grp-row.drop-after").forEach((n) => n.classList.remove("drop-before", "drop-after")); }
 function renderGroupManage() {
   const box = el("groupList"); box.innerHTML = "";
-  for (const g of GROUPS) {
-    const row = document.createElement("div"); row.className = "grp-row";
-    row.innerHTML = `<span class="grp-name">${esc(g.name)}</span>`;
+  for (const g of sortedGroups()) {
+    const row = document.createElement("div"); row.className = "grp-row"; row.draggable = true; row._g = g;
+    row.innerHTML = `<span class="grp-drag" title="按住拖动排序">⠿</span><span class="grp-name">${esc(g.name)}</span>`;
     const ren = document.createElement("button");
     ren.className = "small"; ren.textContent = "重命名";
     ren.onclick = () => renameGroup(g);
@@ -624,8 +627,32 @@ function renderGroupManage() {
     };
     row.appendChild(ren);
     row.appendChild(del);
+    row.addEventListener("dragstart", (e) => { DRAG_GRP = g; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", g.id); } catch {} row.classList.add("dragging"); });
+    row.addEventListener("dragend", () => { row.classList.remove("dragging"); clearGrpHints(); DRAG_GRP = null; });
     box.appendChild(row);
   }
+  box.ondragover = (e) => {
+    if (!DRAG_GRP) return;
+    const row = e.target.closest(".grp-row"); if (!row || row._g.id === DRAG_GRP.id) return;
+    e.preventDefault(); clearGrpHints();
+    const r = row.getBoundingClientRect();
+    row.classList.add((e.clientY - r.top) < r.height / 2 ? "drop-before" : "drop-after");
+  };
+  box.ondrop = async (e) => {
+    if (!DRAG_GRP) return;
+    const row = e.target.closest(".grp-row"); if (!row || row._g.id === DRAG_GRP.id) return;
+    e.preventDefault(); clearGrpHints();
+    const target = row._g;
+    const list = sortedGroups().filter((x) => x.id !== DRAG_GRP.id);
+    const r = row.getBoundingClientRect();
+    const before = (e.clientY - r.top) < r.height / 2;
+    const i = list.findIndex((x) => x.id === target.id);
+    const idx = i >= 0 ? (before ? i : i + 1) : list.length;
+    const sort = insertSort(list, idx);
+    await needAuth();
+    const rr = await callApi("/groups/" + DRAG_GRP.id, { method: "PUT", body: JSON.stringify({ sort }) });
+    if (rr.ok) { toast("已调整顺序"); await loadData(); renderGroupManage(); } else toast("排序失败");
+  };
 }
 el("btnAddGroup").onclick = async () => {
   const name = el("newGroupName").value.trim(); if (!name) return toast("请输入分区名");
