@@ -10,7 +10,7 @@
   :root{ --bg:#111217; --panel:#181a20; --panel2:#20232a; --line:#2a2e37; --tx:#e8eaed; --mut:#8b929d; --acc:#4f8cff; --acc2:#3b6fd4; --danger:#ff5d5d; --ok:#3ecf8e; --work:#ff9f43; }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;overflow:hidden}
+  body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;overflow:hidden;display:flex;flex-direction:column}
   a{color:inherit;text-decoration:none}
   button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--tx);padding:6px 10px;border-radius:8px;transition:.15s;white-space:nowrap}
   button:hover{border-color:var(--acc);background:#252830}
@@ -28,7 +28,7 @@
   .tabs button{border:none;background:transparent;padding:5px 14px;border-radius:7px;font-size:13px;color:var(--mut)}
   .tabs button.active{background:var(--acc);color:#fff}
 
-  .layout{display:flex;height:calc(100vh - 48px - 34px)}
+  .layout{display:flex;flex:1;min-height:0}
   .foot{height:34px;flex:none;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--panel);border-top:1px solid var(--line);color:var(--mut);font-size:12px}
   .foot .dot{opacity:.5}
   .foot a{color:var(--acc)}
@@ -109,11 +109,32 @@
   .upd-info a{color:var(--acc)}
 
   @media (max-width:700px){
-    .side{width:44px;padding:10px 0}
-    .side h2,.cat .name{display:none}
-    .cat{justify-content:center;padding:10px 0}
-    .cat .cnt{transform:scale(.85)}
-    .search{width:120px}
+    /* 头部换行：标题+按钮一行；分区标签一行；搜索整行 */
+    header{flex-wrap:wrap;height:auto;padding:8px 10px;row-gap:8px;column-gap:8px}
+    header h1{font-size:14px;flex:1 1 auto;min-width:0}
+    .spacer{display:none}
+    #btnSettings,#btnAddBm,#btnLogin{order:1}
+    .tabs{flex:1 1 100%;order:2;overflow-x:auto}
+    .search{flex:1 1 100%;order:3;width:100%}
+
+    /* 布局改竖向：分类变顶部横向滚动胶囊条 */
+    .layout{flex-direction:column}
+    .resizer{display:none}
+    .side{width:100%;flex:none;flex-direction:row;align-items:center;gap:6px;overflow-x:auto;overflow-y:hidden;border-right:none;border-bottom:1px solid var(--line);padding:8px 10px}
+    .side h2{display:none}
+    .cat{width:auto;flex:none;padding:6px 12px;border-left:none;border:1px solid var(--line);border-radius:999px;color:var(--mut);justify-content:center}
+    .cat .name{display:block}
+    .cat .cnt{margin-left:6px}
+    .cat.active{background:var(--acc);border-color:var(--acc);color:#fff}
+    .cat.active .cnt{background:#fff;color:var(--acc);border-color:#fff}
+
+    main{padding:12px 12px}
+    .bar{margin-bottom:10px}
+    .bar h3{font-size:14px}
+
+    /* 书签两列撑满 */
+    .items{gap:8px}
+    .item{width:auto;flex:1 1 calc(50% - 4px);min-height:38px}
   }
 </style>
 </head>
@@ -294,6 +315,6 @@
 
 <div class="ctx" id="ctxMenu"></div>
 
-<script src="app.js?v=202609110240"></script>
+<script src="app.js?v=202609201509"></script>
 </body>
 </html>
