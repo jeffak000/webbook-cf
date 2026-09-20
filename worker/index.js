@@ -190,10 +190,13 @@ async function getIconsFast(env) {
 }
 async function getGroups(env) {
   let arr = (await kvGet(env, "data/groups.json")) || [];
+  let dirty = false;
   if (!arr.length) {
-    arr = [{ id: "personal", name: "个人区" }, { id: "work", name: "工作区" }];
+    arr = [{ id: "personal", name: "个人区", sort: 0 }, { id: "work", name: "工作区", sort: 1 }];
     await kvPut(env, "data/groups.json", arr);
   }
+  arr.forEach((g, i) => { if (typeof g.sort !== "number") { g.sort = i; dirty = true; } });
+  if (dirty) await kvPut(env, "data/groups.json", arr);
   return arr;
 }
 async function setGroups(env, arr) {
@@ -801,7 +804,8 @@ export default {
         const g = await getGroups(env);
         const id = body.id && /^[A-Za-z0-9_-]{1,32}$/.test(String(body.id)) ? String(body.id) : crypto.randomUUID().slice(0, 8);
         if (g.find((x) => x.id === id)) return json({ error: "该分区已存在" }, 409);
-        const ng = { id, name };
+        const maxSort = g.reduce((m, x) => Math.max(m, x.sort || 0), 0);
+        const ng = { id, name, sort: maxSort + 1 };
         g.push(ng);
         await setGroups(env, g);
         return json(ng, 201);
@@ -818,6 +822,7 @@ export default {
           if (!name) return json({ error: "名称必填" }, 400);
           target.name = name;
         }
+        if (body.sort != null) target.sort = Number(body.sort);
         await setGroups(env, g);
         return json(target);
       }
