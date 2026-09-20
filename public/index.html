@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#111217" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%96%3C/text%3E%3C/svg%3E" />
 <title>书签中心</title>
 <!-- 尽早发出首屏数据请求（不等 app.js 下载执行），省一个往返 -->
 <script>window.__boot = fetch("/api/bootstrap?icons=1", { credentials: "same-origin" }).catch(function(){ return new Response(null, { status: 599 }); });</script>
@@ -101,12 +103,37 @@
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:9px 16px;border-radius:10px;opacity:0;transition:.25s;pointer-events:none;z-index:90;font-size:13px}
   .toast.show{opacity:1}
 
-  .search{width:190px;background:var(--bg);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:6px 10px;font:inherit;outline:none}
+  .search{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:6px 26px 6px 10px;font:inherit;outline:none}
   .search:focus{border-color:var(--acc)}
   .search::placeholder{color:var(--mut)}
   mark{background:rgba(79,140,255,.32);color:inherit;border-radius:3px;padding:0 1px}
   .upd-info{font-size:12px;color:var(--mut);line-height:1.6;margin:-4px 0 12px;padding:8px 10px;background:var(--bg);border:1px solid var(--line);border-radius:8px}
   .upd-info a{color:var(--acc)}
+
+  /* ---------- 整体细节优化 ---------- */
+  :root{color-scheme:dark}
+  *::-webkit-scrollbar{width:10px;height:10px}
+  *::-webkit-scrollbar-thumb{background:#2f3440;border-radius:999px;border:2px solid transparent;background-clip:content-box}
+  *::-webkit-scrollbar-thumb:hover{background:#3a4150;background-clip:content-box}
+  *::-webkit-scrollbar-track{background:transparent}
+  button,.cat,.item,.tabs button{-webkit-tap-highlight-color:transparent;user-select:none}
+  button:focus-visible,.cat:focus-visible,.item:focus-visible,.search:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+  .item{box-shadow:0 1px 2px #0004}
+  .item:hover{box-shadow:0 6px 18px #0007}
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:48px 16px;color:var(--mut)}
+  .empty::before{content:"🗂️";font-size:20px;opacity:.75}
+  .items .empty{display:block;padding:10px 0}
+  .items .empty::before{content:none}
+  .toast{box-shadow:0 10px 34px #0008;max-width:82vw;text-align:center}
+  .search-wrap{position:relative;display:flex;align-items:center;width:190px}
+  .search-clear{position:absolute;right:5px;display:none;border:none;background:transparent;color:var(--mut);padding:2px 5px;border-radius:6px;line-height:1;font-size:12px;cursor:pointer}
+  .search-clear:hover{color:var(--tx);background:var(--panel2)}
+  .search-wrap.has-q .search-clear{display:block}
+  .skel-head{height:14px;width:130px;border-radius:6px;background:var(--panel2);margin-bottom:10px}
+  .skel-item{width:180px;height:34px;border-radius:8px;background:var(--panel2)}
+  .skel-sec{animation:skelPulse 1.2s ease-in-out infinite}
+  @keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.95}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
   @media (max-width:700px){
     /* 头部换行：标题+按钮一行；分区标签一行；搜索整行 */
@@ -115,12 +142,13 @@
     .spacer{display:none}
     #btnSettings,#btnAddBm,#btnLogin{order:1}
     .tabs{flex:1 1 100%;order:2;overflow-x:auto}
-    .search{flex:1 1 100%;order:3;width:100%}
+    .search-wrap{flex:1 1 100%;order:3;width:100%}
 
     /* 布局改竖向：分类变顶部横向滚动胶囊条 */
     .layout{flex-direction:column}
     .resizer{display:none}
-    .side{width:100%;flex:none;flex-direction:row;align-items:center;gap:6px;overflow-x:auto;overflow-y:hidden;border-right:none;border-bottom:1px solid var(--line);padding:8px 10px}
+    .side{width:100%;flex:none;flex-direction:row;align-items:center;gap:6px;overflow-x:auto;overflow-y:hidden;border-right:none;border-bottom:1px solid var(--line);padding:8px 10px;scrollbar-width:none}
+    .side::-webkit-scrollbar{display:none}
     .side h2{display:none}
     .cat{width:auto;flex:none;padding:6px 12px;border-left:none;border:1px solid var(--line);border-radius:999px;color:var(--mut);justify-content:center}
     .cat .name{display:block}
@@ -145,7 +173,10 @@
     <button data-g="personal" class="active">个人</button>
     <button data-g="work">工作</button>
   </div>
-  <input id="search" class="search" placeholder="搜索书签 (Ctrl/⌘+K)" />
+  <span class="search-wrap" id="searchWrap">
+    <input id="search" class="search" placeholder="搜索书签 (Ctrl/⌘+K)" />
+    <button class="search-clear" id="searchClear" type="button" aria-label="清空搜索">✕</button>
+  </span>
   <span class="spacer"></span>
   <button class="ghost" id="btnSettings">设置</button>
   <button class="primary" id="btnAddBm">+ 书签</button>
@@ -315,6 +346,6 @@
 
 <div class="ctx" id="ctxMenu"></div>
 
-<script src="app.js?v=202609201509"></script>
+<script src="app.js?v=202609201615"></script>
 </body>
 </html>
