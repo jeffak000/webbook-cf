@@ -1,6 +1,6 @@
 {
-  "version": "v4.1",
+  "version": "v4.2",
   "url": "https://github.com/jeffak000/webbook-cf/releases",
-  "notes": "新增站内全局搜索（跨分组/分类，实时高亮 + Ctrl/⌘+K 快捷键）；新增「检查更新」入口（页脚版本号 + 设置里比对 GitHub releases）。部署见 README。",
-  "updatedAt": "2026-09-11"
+  "notes": "移动端布局重做（头部换行 + 分类横向胶囊条 + 书签两列）；整体体验优化：首屏骨架屏、图标懒加载、搜索清除按钮、Esc 关闭浮层、键盘焦点可见、深色滚动条与 color-scheme。",
+  "updatedAt": "2026-09-20"
 }
