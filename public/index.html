@@ -135,6 +135,14 @@
   @keyframes skelPulse{0%,100%{opacity:.5}50%{opacity:.95}}
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
+  .grp-row{display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:6px;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+  .grp-row.dragging{opacity:.5}
+  .grp-row.drop-before{box-shadow:inset 0 2px 0 0 var(--acc)}
+  .grp-row.drop-after{box-shadow:inset 0 -2px 0 0 var(--acc)}
+  .grp-drag{cursor:grab;color:var(--mut);font-size:14px;line-height:1;user-select:none}
+  .grp-drag:active{cursor:grabbing}
+  .grp-row .grp-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500}
+
   @media (max-width:700px){
     /* 头部换行：标题+按钮一行；分区标签一行；搜索整行 */
     header{flex-wrap:wrap;height:auto;padding:8px 10px;row-gap:8px;column-gap:8px}
@@ -228,7 +236,7 @@
       <input id="newGroupName" placeholder="新分区名称" style="flex:1;background:var(--bg);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:7px 10px;font:inherit" />
       <button class="primary small" id="btnAddGroup">+ 添加</button>
     </div>
-    <small style="display:block;color:var(--mut);margin:-6px 0 14px;line-height:1.6">提示：在书签上按住拖动，可把它拖到顶部分区标签（改分区）或拖到某个分类区（改分类，并随其所在分区移动）。</small>
+    <small style="display:block;color:var(--mut);margin:-6px 0 14px;line-height:1.6">提示：在书签上按住拖动，可把它拖到顶部分区标签（改分区）或拖到某个分类区（改分类，并随其所在分区移动）。下方分区列表可按住拖动排序。</small>
     <div class="setting" style="border-top:1px solid var(--line)">
       <div><label>更新图标</label><small>抓取所有书签的 favicon，失败保持占位</small></div>
       <button class="primary small" id="btnRefreshIcons">更新</button>
@@ -346,6 +354,6 @@
 
 <div class="ctx" id="ctxMenu"></div>
 
-<script src="app.js?v=202609201615"></script>
+<script src="app.js?v=202609201616"></script>
 </body>
 </html>
