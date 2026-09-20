@@ -6,8 +6,8 @@ let BMS = [];
 let ICONS = {};
 let GROUPS = [{ id: "personal", name: "个人区" }, { id: "work", name: "工作区" }];
 let SITE = { name: "gai溜子导航站", author: "gai溜子到处跑", url: "www.090803.xyz" };
-const VERSION = "202609110240";
-const APP_VERSION = "v4.1";
+const VERSION = "202609201615";
+const APP_VERSION = "v4.2";
 const REPO_URL = "https://github.com/jeffak000/webbook-cf";
 let SEARCH_Q = "";
 let GROUP = localStorage.getItem("bm_group") || "personal";
@@ -37,6 +37,17 @@ function toast(msg) {
   if (!t) { t = document.createElement("div"); t.className = "toast"; document.body.appendChild(t); }
   t.textContent = msg; t.classList.add("show");
   clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+function renderSkeleton() {
+  const c = el("content"); if (!c || c.children.length) return;
+  let h = "";
+  for (let sk = 0; sk < 3; sk++) {
+    h += '<div class="sec skel-sec"><div class="skel-head"></div><div class="items">';
+    for (let i = 0; i < 5; i++) h += '<div class="skel-item"></div>';
+    h += "</div></div>";
+  }
+  c.innerHTML = h;
 }
 
 function letterIconSvg(host) {
@@ -86,6 +97,7 @@ async function loadData() {
     const snap = JSON.parse(localStorage.getItem("bm_snapshot") || "null");
     if (snap && Array.isArray(snap.categories)) applyData(snap);
   } catch {}
+  if (!BMS.length) renderSkeleton();
   // 2) 再拉一次服务端全量（单请求，复用 HTML 里提前发出的那个请求，省一个 RTT）
   try {
     let r;
@@ -172,6 +184,7 @@ function renderCatNav() {
 }
 
 function renderMain() {
+  updateSearchClear();
   if (SEARCH_Q) { renderSearch(SEARCH_Q); return; }
   const c = el("content"); c.innerHTML = "";
   el("curTitle").textContent = groupName(GROUP);
@@ -246,8 +259,8 @@ function section(title, count, items, cat) {
 function bmItem(b) {
   const h = hostOf(b.url);
   const d = document.createElement("div"); d.className = "item"; d._bm = b; d.draggable = true;
-  d.title = `${esc(b.title)}\n${esc(b.url)}${b.note ? "\n" + esc(b.note) : ""}`;
-  d.innerHTML = `<img src="${iconSrc(h)}" alt=""/><span class="t">${hl(b.title || b.url, SEARCH_Q)}</span>`;
+  d.title = [b.title, b.url, b.note].filter(Boolean).join("\n");
+  d.innerHTML = `<img src="${iconSrc(h)}" alt="" width="18" height="18" loading="lazy" decoding="async" referrerpolicy="no-referrer"/><span class="t">${hl(b.title || b.url, SEARCH_Q)}</span>`;
   d.addEventListener("dragstart", (e) => {
     DRAG_BM = b;
     e.dataTransfer.effectAllowed = "move";
@@ -789,6 +802,8 @@ el("groupTabs").onclick = (e) => {
 
 // ---------------- 搜索 ----------------
 el("search").addEventListener("input", (e) => { SEARCH_Q = e.target.value.trim(); renderMain(); });
+el("searchClear").onclick = () => { el("search").value = ""; SEARCH_Q = ""; renderMain(); el("search").focus(); };
+function updateSearchClear() { const w = el("searchWrap"); if (w) w.classList.toggle("has-q", !!el("search").value); }
 el("search").addEventListener("keydown", (e) => { if (e.key === "Escape") { el("search").value = ""; SEARCH_Q = ""; renderMain(); } });
 document.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); el("search").focus(); el("search").select(); } });
 
@@ -815,6 +830,16 @@ async function checkUpdate(silent) {
     if (!silent) box.innerHTML = '检查更新失败（网络错误）';
   }
 }
+
+// ---------------- Esc 关闭浮层 ----------------
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  hideCtx();
+  const login = el("loginModal");
+  if (login && login.classList.contains("show")) { hide("loginModal"); resolveLogin(false); }
+  document.querySelectorAll(".modal.show").forEach((m) => m.classList.remove("show"));
+  el("settingsDrawer").classList.remove("show");
+});
 
 // ---------------- 启动 ----------------
 updateLoginBtn();
