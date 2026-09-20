@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 const PUBLIC = new Set(["categories", "bookmarks", "icon", "health"]);
-const APP_VERSION = "v4.1";                  // 语义版本，对应 GitHub 上的发行版
+const APP_VERSION = "v4.2";                  // 语义版本，对应 GitHub 上的发行版
 const REPO_VERSION_URL = "https://raw.githubusercontent.com/jeffak000/webbook-cf/main/version.json";
 
 // --------------------------- 基础工具 ---------------------------
@@ -271,7 +271,7 @@ function cmpVer(a, b) {
 // 检查 GitHub 仓库是否发布了更新；结果在 isolate 内缓存 5 分钟，避免频繁请求
 let UPDATE_CACHE = { t: 0, v: null };
 async function checkUpdate(env) {
-  if (UPDATE_CACHE.v && Date.now() - UPDATE_CACHE.t < 300000) return json(UPDATE_CACHE.v);
+  if (UPDATE_CACHE.v && Date.now() - UPDATE_CACHE.t < 300000) return json(UPDATE_CACHE.v, 200, { "cache-control": "no-store" });
   const out = {
     current: APP_VERSION,
     latest: null,
@@ -297,7 +297,7 @@ async function checkUpdate(env) {
     }
   } catch { out.error = "无法连接 GitHub"; }
   UPDATE_CACHE = { t: Date.now(), v: out };
-  return json(out);
+  return json(out, 200, { "cache-control": "no-store" });
 }
 
 // 未通过访问锁时返回的锁屏页（不依赖任何静态资源）
@@ -503,7 +503,7 @@ export default {
     if (head === "health") return json({ ok: true });
 
     // 版本与更新检查：公开接口（不要求登录），供访客/下载者自查是否有新版
-    if (head === "version" && method === "GET") return json({ version: APP_VERSION });
+    if (head === "version" && method === "GET") return json({ version: APP_VERSION }, 200, { "cache-control": "no-store" });
     if (head === "check-update" && method === "GET") return checkUpdate(env);
 
     if (method === "POST" && head === "login") {
