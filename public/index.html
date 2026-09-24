@@ -42,6 +42,10 @@
   .cat .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
   .cat .cnt{font-size:11px;background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:999px}
   .cat.active .cnt{background:var(--acc);color:#fff;border-color:var(--acc)}
+  .cat .add{flex:none;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;padding:0;border:1px solid var(--line);background:var(--panel2);color:var(--mut);border-radius:6px;cursor:pointer;opacity:.5;transition:.12s}
+  .cat:hover .add,.cat.active .add,.cat .add:focus-visible{opacity:1}
+  .cat .add:hover{background:var(--acc);border-color:var(--acc);color:#fff}
+  .cat.active .add:hover{background:#fff;border-color:#fff;color:var(--acc)}
   .resizer{width:5px;flex:none;cursor:col-resize;background:transparent;margin-left:-3px;z-index:8}
   .resizer:hover{background:var(--acc)}
 
@@ -163,6 +167,7 @@
     .cat .cnt{margin-left:6px}
     .cat.active{background:var(--acc);border-color:var(--acc);color:#fff}
     .cat.active .cnt{background:#fff;color:var(--acc);border-color:#fff}
+    .cat .add{opacity:1;width:16px;height:16px;font-size:13px}
 
     main{padding:12px 12px}
     .bar{margin-bottom:10px}
@@ -354,6 +359,6 @@
 
 <div class="ctx" id="ctxMenu"></div>
 
-<script src="app.js?v=202609201616"></script>
+<script src="app.js?v=202609201631"></script>
 </body>
 </html>
