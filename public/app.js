@@ -6,8 +6,8 @@ let BMS = [];
 let ICONS = {};
 let GROUPS = [{ id: "personal", name: "个人区" }, { id: "work", name: "工作区" }];
 let SITE = { name: "gai溜子导航站", author: "gai溜子到处跑", url: "www.090803.xyz" };
-const VERSION = "202609201616";
-const APP_VERSION = "v4.2";
+const VERSION = "202609201631";
+const APP_VERSION = "v4.3";
 const REPO_URL = "https://github.com/jeffak000/webbook-cf";
 let SEARCH_Q = "";
 let GROUP = localStorage.getItem("bm_group") || "personal";
@@ -168,8 +168,10 @@ function renderCatNav() {
     d.className = "cat" + (ACTIVE_CAT === c.id ? " active" : "");
     d._cat = c;
     d.draggable = true;
-    d.innerHTML = `<span class="name">${esc(c.name)}</span><span class="cnt">${bmCount(c.id)}</span>`;
+    d.innerHTML = `<span class="name">${esc(c.name)}</span><span class="cnt">${bmCount(c.id)}</span><span class="add" role="button" tabindex="0" title="添加书签到「${esc(c.name)}」">＋</span>`;
     d.onclick = () => { SEARCH_Q = ""; if (el("search")) el("search").value = ""; ACTIVE_CAT = c.id; render(); };
+    const addBtn = d.querySelector(".add");
+    if (addBtn) addBtn.onclick = (e) => { e.stopPropagation(); addBmTo(c.id); };
     d.addEventListener("dragstart", (e) => {
       DRAG_CAT = c; e.dataTransfer.effectAllowed = "move";
       try { e.dataTransfer.setData("text/plain", c.id); } catch {}
@@ -482,13 +484,23 @@ function addBm() {
   el("bmTitle").textContent = "新建书签";
   el("bmTitle_in").value = ""; el("bmUrl").value = ""; el("bmNote").value = "";
   fillCatSelect(""); fillGroupSelect("bmGroup", GROUP);
-  el("bmModal")._id = null; show("bmModal"); el("bmUrl").focus();
+  el("bmModal")._id = null; el("bmModal")._toCat = null; show("bmModal"); el("bmUrl").focus();
+}
+// 从分类行的「＋」进来：新书签直接归入该分类，并排在该分类最前
+function addBmTo(catId) {
+  const cat = CATS.find((x) => x.id === catId);
+  if (!cat) return addBm();
+  el("bmTitle").textContent = "添加到「" + cat.name + "」";
+  el("bmTitle_in").value = ""; el("bmUrl").value = ""; el("bmNote").value = "";
+  fillCatSelect(cat.id); fillGroupSelect("bmGroup", cat.group || GROUP);
+  el("bmModal")._id = null; el("bmModal")._toCat = cat.id;
+  show("bmModal"); el("bmUrl").focus();
 }
 function editBm(b) {
   el("bmTitle").textContent = "编辑书签";
   el("bmTitle_in").value = b.title || ""; el("bmUrl").value = b.url || ""; el("bmNote").value = b.note || "";
   fillCatSelect(b.category_id || ""); fillGroupSelect("bmGroup", b.group || GROUP);
-  el("bmModal")._id = b.id; show("bmModal");
+  el("bmModal")._id = b.id; el("bmModal")._toCat = null; show("bmModal");
 }
 function fillCatSelect(sel) {
   const s = el("bmCat"); s.innerHTML = `<option value="">（未分类）</option>`;
@@ -558,7 +570,7 @@ el("catSave").onclick = async () => {
   if (r.ok) { hide("catModal"); await loadData(); } else toast("保存失败");
 };
 
-el("bmCancel").onclick = () => hide("bmModal");
+el("bmCancel").onclick = () => { el("bmModal")._toCat = null; hide("bmModal"); };
 el("bmSave").onclick = async () => {
   await needAuth();
   const url = el("bmUrl").value.trim(); if (!url) return toast("请输入 URL");
@@ -570,13 +582,25 @@ el("bmSave").onclick = async () => {
     note: el("bmNote").value.trim() || null
   };
   const id = el("bmModal")._id;
+  const toCat = el("bmModal")._toCat;
+  if (!id && toCat) {
+    const sorts = BMS.filter((b) => b.category_id === toCat).map((b) => b.sort || 0);
+    payload.sort = sorts.length ? Math.min.apply(null, sorts) - 1 : 0;
+  }
   const r = id ? await callApi("/bookmarks/" + id, { method: "PUT", body: JSON.stringify(payload) })
                : await callApi("/bookmarks", { method: "POST", body: JSON.stringify(payload) });
   if (r.ok) {
     hide("bmModal");
     const h = hostOf(payload.url);
     if (h) { delete ICONS[h]; ICON_BUST[h] = Date.now(); } // 让该图标重新拉取
-    await loadData();
+    if (toCat) {
+      const nm = (CATS.find((x) => x.id === toCat) || {}).name || "";
+      el("bmModal")._toCat = null;
+      SEARCH_Q = ""; if (el("search")) el("search").value = "";
+      ACTIVE_CAT = toCat;
+      await loadData();
+      if (nm) toast("已添加到「" + nm + "」");
+    } else await loadData();
   } else toast("保存失败");
 };
 
