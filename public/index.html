@@ -255,6 +255,13 @@
       <button class="small" id="btnBackup">备份</button>
     </div>
     <div class="setting">
+      <div><label>备份到邮箱</label><small>把备份 JSON 作为附件发到你的邮箱</small></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input id="bakEmail" placeholder="收件邮箱" style="width:170px;background:var(--bg);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:5px 8px;font:inherit;outline:none" />
+        <button class="small" id="btnBackupEmail">发送</button>
+      </div>
+    </div>
+    <div class="setting">
       <div><label>恢复数据</label><small>从 JSON 文件恢复分类、书签、图标</small></div>
       <button class="small" id="btnRestore">恢复</button>
     </div>
@@ -363,6 +370,6 @@
 
 <div class="ctx" id="ctxMenu"></div>
 
-<script src="app.js?v=202609250125"></script>
+<script src="app.js?v=202609271544"></script>
 </body>
 </html>
