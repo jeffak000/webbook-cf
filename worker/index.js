@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 const PUBLIC = new Set(["categories", "bookmarks", "icon", "health"]);
-const APP_VERSION = "v4.4";                  // 语义版本，对应 GitHub 上的发行版
+const APP_VERSION = "v4.5";                  // 语义版本，对应 GitHub 上的发行版
 const REPO_VERSION_URL = "https://raw.githubusercontent.com/jeffak000/webbook-cf/main/version.json";
 
 // --------------------------- 基础工具 ---------------------------
@@ -150,6 +150,15 @@ async function requireAuth(req, env) {
   const cm = cookie.match(/(?:^|;\s*)token=([^;]+)/);
   if (cm && (await verifyToken(cm[1], pwd))) return true;
   return false;
+}
+
+// base64（UTF-8 安全），用于邮件附件
+function b64encode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  return btoa(bin);
 }
 
 // --------------------------- 数据访问 ---------------------------
@@ -542,7 +551,7 @@ export default {
     // 访问锁关闭时：只读接口公开，写入 / 敏感接口仍需登录
     const acc = await getAccess(env);
     const isWrite = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
-    const sensitive = ["backup", "restore", "data", "icons", "access", "password"];
+    const sensitive = ["backup", "backup-email", "restore", "data", "icons", "access", "password"];
     if (acc.gate || isWrite || sensitive.includes(head)) {
       if (!(await requireAuth(request, env))) return json({ error: "unauthorized" }, 401);
     }
@@ -692,6 +701,43 @@ export default {
         bookmarks: bms,
         icons,
       });
+    }
+
+    // ---- 备份发送到邮箱（Resend 附件）----
+    if (head === "backup-email" && method === "POST") {
+      const body = await readBody(request);
+      const to = String((body && body.to) || "").trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return json({ error: "收件邮箱格式不正确" }, 400);
+      const key = env.RESEND_API_KEY;
+      if (!key) return json({ error: "未配置邮件服务密钥（RESEND_API_KEY）" }, 500);
+      const [cats, bms, icons, groups] = await Promise.all([getCats(env), getBms(env), getIcons(env), getGroups(env)]);
+      const payload = { version: 3, generator: "bookmark-hub-cf", exportedAt: new Date().toISOString(), groups, categories: cats, bookmarks: bms, icons };
+      const d = new Date(Date.now() + 8 * 3600 * 1000); // 北京时间日期，避免备份文件名比本地日期早一天
+      const dateStr = d.toISOString().slice(0, 10);
+      const filename = "bookmarks-" + dateStr + ".json";
+      let upstream;
+      try {
+        upstream = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { authorization: "Bearer " + key, "content-type": "application/json" },
+          body: JSON.stringify({
+            from: env.MAIL_FROM || "Book Hub <onboarding@resend.dev>",
+            to: [to],
+            subject: "书签备份 " + dateStr + "（" + cats.length + " 分类 / " + bms.length + " 书签）",
+            text: "附件是 " + dateStr + " 的全量备份 JSON，可用于「设置 → 恢复」。",
+            attachments: [{ filename: filename, content: b64encode(JSON.stringify(payload, null, 2)) }],
+          }),
+        });
+      } catch (e) {
+        return json({ error: "调用邮件服务失败" }, 502);
+      }
+      if (!upstream.ok) {
+        const t = await upstream.text().catch(() => "");
+        let msg = "邮件发送失败";
+        try { const j = JSON.parse(t); msg = j.message || j.error || msg; } catch {}
+        return json({ error: msg }, 502);
+      }
+      return json({ ok: true, file: filename, categories: cats.length, bookmarks: bms.length });
     }
 
     if (head === "restore" && method === "POST") {
