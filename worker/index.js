@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 const PUBLIC = new Set(["categories", "bookmarks", "icon", "health"]);
-const APP_VERSION = "v4.3";                  // 语义版本，对应 GitHub 上的发行版
+const APP_VERSION = "v4.4";                  // 语义版本，对应 GitHub 上的发行版
 const REPO_VERSION_URL = "https://raw.githubusercontent.com/jeffak000/webbook-cf/main/version.json";
 
 // --------------------------- 基础工具 ---------------------------
@@ -482,6 +482,9 @@ export default {
         : "public, max-age=300";
       const hdr = new Headers(resp.headers);
       hdr.set("cache-control", cc);
+      hdr.set("x-content-type-options", "nosniff");
+      hdr.set("referrer-policy", "strict-origin-when-cross-origin");
+      hdr.set("permissions-policy", "camera=(), microphone=(), geolocation=()");
       hdr.set("x-cc-by", "worker");
       return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: hdr });
     }
