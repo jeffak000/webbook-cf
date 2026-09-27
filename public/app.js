@@ -6,8 +6,9 @@ let BMS = [];
 let ICONS = {};
 let GROUPS = [{ id: "personal", name: "个人区" }, { id: "work", name: "工作区" }];
 let SITE = { name: "gai溜子导航站", author: "gai溜子到处跑", url: "www.090803.xyz" };
-const VERSION = "202609201631";
-const APP_VERSION = "v4.3";
+const VERSION = "202609250125";
+const APP_VERSION = "v4.4";
+const SNAPSHOT_VERSION = 4;
 const REPO_URL = "https://github.com/jeffak000/webbook-cf";
 let SEARCH_Q = "";
 let GROUP = localStorage.getItem("bm_group") || "personal";
@@ -65,11 +66,34 @@ function iconSrc(host) {
   return "/api/icon?host=" + encodeURIComponent(host) + b;
 }
 
+function iconError(img, host) {
+  img.onerror = null;
+  img.src = letterIconSvg(host);
+}
+
+async function fetchWithRetry(url, opts = {}, retries = 1) {
+  let last;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), opts.timeout || 12000);
+    try {
+      const res = await fetch(url, Object.assign({}, opts, { signal: ctrl.signal }));
+      clearTimeout(timer);
+      if (res.ok || res.status === 401 || attempt === retries) return res;
+      last = new Error("HTTP " + res.status);
+    } catch (e) {
+      clearTimeout(timer); last = e;
+      if (attempt === retries) throw e;
+    }
+  }
+  throw last || new Error("网络请求失败");
+}
+
 async function callApi(path, opts = {}) {
   const headers = Object.assign({}, opts.headers || {});
   if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
   if (opts.body && !(opts.body instanceof FormData)) headers["Content-Type"] = "application/json";
-  const res = await fetch(API + "/api" + path, Object.assign({}, opts, { headers }));
+  const res = await fetchWithRetry(API + "/api" + path, Object.assign({}, opts, { headers }), opts.method && opts.method !== "GET" ? 0 : 1);
   if (res.status === 401) {
     TOKEN = ""; localStorage.removeItem("bm_token"); updateLoginBtn();
     openLogin(); throw new Error("unauthorized");
@@ -96,14 +120,16 @@ async function loadData() {
   // 1) 先用本地快照秒开（离线缓存），避免首屏白屏
   try {
     const snap = JSON.parse(localStorage.getItem("bm_snapshot") || "null");
-    if (snap && Array.isArray(snap.categories)) applyData(snap);
+    if (snap && snap.version === SNAPSHOT_VERSION && Array.isArray(snap.categories)) applyData(snap);
   } catch {}
   if (!BMS.length) renderSkeleton();
   // 2) 再拉一次服务端全量（单请求，复用 HTML 里提前发出的那个请求，省一个 RTT）
   try {
     let r;
     if (window.__boot) { r = await window.__boot; window.__boot = null; }
-    else r = await callApi("/bootstrap?icons=1");
+    else r = await callApi("/bootstrap");
+    // 预加载失败时再走一次带超时/重试的请求，避免冷启动或瞬时网络错误导致白屏
+    if (r.status === 599) r = await callApi("/bootstrap");
     if (r.status === 401) {
       TOKEN = ""; localStorage.removeItem("bm_token"); updateLoginBtn();
       openLogin(); throw new Error("unauthorized");
@@ -112,7 +138,7 @@ async function loadData() {
     if (j.icons) ICONS = j.icons;
     applyData(j);
     try {
-      localStorage.setItem("bm_snapshot", JSON.stringify({ groups: GROUPS, categories: CATS, bookmarks: BMS, site: SITE }));
+      localStorage.setItem("bm_snapshot", JSON.stringify({ version: SNAPSHOT_VERSION, groups: GROUPS, categories: CATS, bookmarks: BMS, site: SITE }));
     } catch {}
   } catch (e) { if (e.message !== "unauthorized") toast("加载失败：" + e.message); }
 }
@@ -264,7 +290,14 @@ function bmItem(b) {
   const h = hostOf(b.url);
   const d = document.createElement("div"); d.className = "item"; d._bm = b; d.draggable = true;
   d.title = [b.title, b.url, b.note].filter(Boolean).join("\n");
-  d.innerHTML = `<img src="${iconSrc(h)}" alt="" width="18" height="18" loading="lazy" decoding="async" referrerpolicy="no-referrer"/><span class="t">${hl(b.title || b.url, SEARCH_Q)}</span>`;
+  d.innerHTML = `<img src="${iconSrc(h)}" alt="" width="18" height="18" loading="lazy" decoding="async" referrerpolicy="no-referrer"/><span class="t">${hl(b.title || b.url, SEARCH_Q)}</span><button class="add bm-add" type="button" title="添加到本分类" aria-label="添加到本分类">＋</button>`;
+  const img = d.querySelector("img");
+  img.addEventListener("error", () => iconError(img, h), { once: true });
+  const addB = d.querySelector(".bm-add");
+  if (addB) {
+    addB.addEventListener("mousedown", (e) => e.stopPropagation());
+    addB.onclick = (e) => { e.stopPropagation(); addBmTo(b.category_id); };
+  }
   d.addEventListener("dragstart", (e) => {
     DRAG_BM = b;
     e.dataTransfer.effectAllowed = "move";
@@ -852,10 +885,16 @@ el("groupTabs").onclick = (e) => {
 })();
 
 // ---------------- 搜索 ----------------
-el("search").addEventListener("input", (e) => { SEARCH_Q = e.target.value.trim(); renderMain(); });
+let searchTimer = 0;
+el("search").addEventListener("input", (e) => {
+  SEARCH_Q = e.target.value.trim();
+  updateSearchClear();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => renderMain(), 120);
+});
 el("searchClear").onclick = () => { el("search").value = ""; SEARCH_Q = ""; renderMain(); el("search").focus(); };
 function updateSearchClear() { const w = el("searchWrap"); if (w) w.classList.toggle("has-q", !!el("search").value); }
-el("search").addEventListener("keydown", (e) => { if (e.key === "Escape") { el("search").value = ""; SEARCH_Q = ""; renderMain(); } });
+el("search").addEventListener("keydown", (e) => { if (e.key === "Escape") { el("search").value = ""; SEARCH_Q = ""; updateSearchClear(); renderMain(); } });
 document.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); el("search").focus(); el("search").select(); } });
 
 // ---------------- 检查更新 ----------------
