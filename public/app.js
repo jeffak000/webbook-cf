@@ -6,8 +6,8 @@ let BMS = [];
 let ICONS = {};
 let GROUPS = [{ id: "personal", name: "个人区" }, { id: "work", name: "工作区" }];
 let SITE = { name: "gai溜子导航站", author: "gai溜子到处跑", url: "www.090803.xyz" };
-const VERSION = "202609250125";
-const APP_VERSION = "v4.4";
+const VERSION = "202609271544";
+const APP_VERSION = "v4.5";
 const SNAPSHOT_VERSION = 4;
 const REPO_URL = "https://github.com/jeffak000/webbook-cf";
 let SEARCH_Q = "";
@@ -744,6 +744,22 @@ el("btnBackup").onclick = async () => {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
   a.download = "bookmarks-" + new Date().toISOString().slice(0, 10) + ".json"; a.click();
   toast("已下载备份");
+};
+try { const _bak = localStorage.getItem("bakEmail"); if (_bak && el("bakEmail")) el("bakEmail").value = _bak; } catch {}
+el("btnBackupEmail").onclick = async () => {
+  await needAuth();
+  const to = ((el("bakEmail").value) || "").trim();
+  if (!to) return toast("请填收件邮箱");
+  const btn = el("btnBackupEmail");
+  const oldTxt = btn.textContent;
+  btn.textContent = "发送中…"; btn.disabled = true;
+  try {
+    const r = await callApi("/backup-email", { method: "POST", body: JSON.stringify({ to: to }) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) { toast("备份已发送到 " + to); try { localStorage.setItem("bakEmail", to); } catch {} }
+    else toast(j.error || ("发送失败（" + r.status + "）"));
+  } catch (e) { toast("发送失败"); }
+  finally { btn.textContent = oldTxt; btn.disabled = false; }
 };
 el("btnRestore").onclick = () => el("restoreFile").click();
 el("restoreFile").onchange = async (e) => {
