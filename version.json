@@ -1,5 +1,5 @@
 {
-  "version": "v4.3",
+  "version": "v4.4",
   "url": "https://github.com/jeffak000/webbook-cf/releases",
-  "notes": "侧栏分类行新增「＋」按钮：一键新建书签并直接归入该分类（排在该分类最前）；其余交互不变。"
+  "notes": "书签卡片「＋」：每张链接末尾加按钮，点一下直接在该分类新建书签"
 }
