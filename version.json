@@ -1,5 +1,5 @@
 {
-  "version": "v4.5",
-  "url": "https://github.com/jeffak000/webbook-cf/releases",
-  "notes": "备份到邮箱：设置里填收件邮箱一键把全量备份 JSON 作为附件发出（Resend）；支持自动记住上次邮箱"
+  "version": "v4.6",
+  "url": "https://github.com/jeffak000/webbook-cf/releases/tag/v4.6",
+  "notes": "修复 Zen 浏览器左侧右键删除分类无反应：改用页面内确认弹窗；删除成功立即更新分类、书签与本地快照；补充失败提示，防止重复提交，支持取消和 Esc 关闭。"
 }

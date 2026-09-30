@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 const PUBLIC = new Set(["categories", "bookmarks", "icon", "health"]);
-const APP_VERSION = "v4.5";                  // 语义版本，对应 GitHub 上的发行版
+const APP_VERSION = "v4.6";                  // 语义版本，对应 GitHub 上的发行版
 const REPO_VERSION_URL = "https://raw.githubusercontent.com/jeffak000/webbook-cf/main/version.json";
 
 // --------------------------- 基础工具 ---------------------------

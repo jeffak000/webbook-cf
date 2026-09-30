@@ -6,8 +6,8 @@ let BMS = [];
 let ICONS = {};
 let GROUPS = [{ id: "personal", name: "个人区" }, { id: "work", name: "工作区" }];
 let SITE = { name: "gai溜子导航站", author: "gai溜子到处跑", url: "www.090803.xyz" };
-const VERSION = "202609271544";
-const APP_VERSION = "v4.5";
+const VERSION = "202609302233";
+const APP_VERSION = "v4.6";
 const SNAPSHOT_VERSION = 4;
 const REPO_URL = "https://github.com/jeffak000/webbook-cf";
 let SEARCH_Q = "";
@@ -167,7 +167,7 @@ function renderSite() {
   const u = (SITE.url || "").trim();
   el("siteUrl").textContent = u;
   el("siteUrl").href = /^https?:\/\//i.test(u) ? u : (u ? "https://" + u : "#");
-  el("siteVer").textContent = "v" + APP_VERSION;
+  el("siteVer").textContent = APP_VERSION;
 }
 
 function renderTabs() {
@@ -505,11 +505,48 @@ function editCat(c) {
   el("catModal")._id = c.id;
   show("catModal"); el("catName").focus();
 }
+let CAT_DELETE_BUSY = false;
+function confirmCatDelete(c) {
+  el("catDeleteMessage").textContent = "删除分类「" + c.name + "」及其下 " + BMS.filter((b) => b.category_id === c.id).length + " 个书签？";
+  show("catDeleteModal");
+  el("catDeleteCancel").focus();
+  return new Promise((resolve) => { el("catDeleteModal")._resolve = resolve; });
+}
+function resolveCatDelete(ok) {
+  const modal = el("catDeleteModal");
+  const resolve = modal._resolve;
+  modal._resolve = null;
+  hide("catDeleteModal");
+  if (resolve) resolve(ok);
+}
+el("catDeleteCancel").onclick = () => resolveCatDelete(false);
+el("catDeleteOk").onclick = () => resolveCatDelete(true);
 async function delCat(c) {
-  if (!confirm(`删除分类「${c.name}」及其下 ${bmCount(c.id)} 个书签？`)) return;
-  await needAuth();
-  const r = await callApi("/categories/" + c.id, { method: "DELETE" });
-  if (r.ok) { toast("已删除"); if (ACTIVE_CAT === c.id) ACTIVE_CAT = "all"; await loadData(); } else toast("删除失败");
+  if (CAT_DELETE_BUSY) return;
+  CAT_DELETE_BUSY = true;
+  try {
+    if (!await confirmCatDelete(c)) return;
+    await needAuth();
+    if (!TOKEN) return;
+    const r = await callApi("/categories/" + encodeURIComponent(c.id), { method: "DELETE" });
+    if (!r.ok) {
+      const detail = await r.json().catch(() => ({}));
+      throw new Error(detail.error || "HTTP " + r.status);
+    }
+    // 使用成功响应更新本地列表，避免立即重读 KV 时旧数据让分类重新出现。
+    CATS = CATS.filter((cat) => cat.id !== c.id);
+    BMS = BMS.filter((b) => b.category_id !== c.id);
+    if (ACTIVE_CAT === c.id) ACTIVE_CAT = "all";
+    render();
+    try {
+      localStorage.setItem("bm_snapshot", JSON.stringify({ version: SNAPSHOT_VERSION, groups: GROUPS, categories: CATS, bookmarks: BMS, site: SITE }));
+    } catch {}
+    toast("已删除");
+  } catch (e) {
+    if (e.message !== "unauthorized") toast("删除失败：" + e.message);
+  } finally {
+    CAT_DELETE_BUSY = false;
+  }
 }
 
 // ---------------- 书签 ----------------
@@ -941,6 +978,7 @@ async function checkUpdate(silent) {
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   hideCtx();
+  resolveCatDelete(false);
   const login = el("loginModal");
   if (login && login.classList.contains("show")) { hide("loginModal"); resolveLogin(false); }
   document.querySelectorAll(".modal.show").forEach((m) => m.classList.remove("show"));
